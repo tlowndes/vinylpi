@@ -1,0 +1,2 @@
+# Vinyl Pi: the web app may run its root helper, and nothing else.
+vinyl ALL=(root) NOPASSWD: /opt/vinyl-pi/scripts/vinyl-admin.sh

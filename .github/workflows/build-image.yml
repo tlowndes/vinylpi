@@ -1,0 +1,57 @@
+name: Build Pi image
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0             # the Pi updates itself with git, so it needs real history
+          persist-credentials: false # never bake a token into the image
+          path: src
+
+      - name: Put the repo into the custom stage
+        run: |
+          mkdir -p src/image/stage-vinylpi/00-vinylpi/files
+          rsync -a --exclude image/stage-vinylpi/00-vinylpi/files src/ src/image/stage-vinylpi/00-vinylpi/files/vinyl-pi/
+          git -C src/image/stage-vinylpi/00-vinylpi/files/vinyl-pi remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git -C src/image/stage-vinylpi/00-vinylpi/files/vinyl-pi checkout -B main
+
+      - uses: usimd/pi-gen-action@v1
+        id: build
+        with:
+          image-name: vinylpi
+          release: trixie
+          pi-gen-version: arm64
+          stage-list: stage0 stage1 stage2 ./src/image/stage-vinylpi
+          hostname: vinyl
+          username: pi
+          enable-ssh: 0              # no shell with a default password; use the manual install if you want SSH
+          disable-first-boot-user-rename: 1
+          locale: en_GB.UTF-8
+          keyboard-keymap: gb
+          keyboard-layout: English (UK)
+          timezone: Europe/London
+          wpa-country: GB
+          compression: xz
+          increase-runner-disk-size: true
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        with:
+          name: vinylpi-image
+          path: ${{ steps.build.outputs.image-path }}
+
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ${{ steps.build.outputs.image-path }}
