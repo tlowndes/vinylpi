@@ -19,6 +19,9 @@
      <div class="top">
       <header class="bar">
         <span class="kicker live" id="live">● CONNECTING</span>
+        <button class="icon-btn push" data-go="stats" aria-label="Listening stats">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M12 20V4M19 20v-6"/></svg>
+        </button>
         <button class="icon-btn" data-go="settings" aria-label="Settings">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
         </button>
@@ -54,7 +57,7 @@
         <label class="kicker" for="side-q">FIND A RECORD</label>
         <input id="side-q" name="q" placeholder="Artist or album" autocomplete="off">
       </form>
-      <div class="kicker dim">EARLIER</div>
+      <div class="row between"><span class="kicker dim">EARLIER</span><button class="link" data-go="stats">Your stats</button></div>
       <ul class="history" id="history"></ul>
     </aside>
   </main>
@@ -104,17 +107,58 @@
         <div><div class="match-title" id="match-title"></div><div class="sub" id="match-meta"></div></div>
       </div>
       <p class="msg" id="scan-msg" role="status"></p>
+      <form class="row" id="q-form" hidden>
+        <label class="sr" for="cover-q">Search for</label>
+        <input id="cover-q" class="field grow" placeholder="Artist or album" autocomplete="off" enterkeyhint="search">
+        <button class="pill">Search</button>
+      </form>
+      <div class="picks" id="picks"></div>
       <label class="pill solid file">
         <input type="file" id="photo" accept="image/*" capture="environment">
         <span id="photo-label">Take photo</span>
       </label>
-      <form class="row" id="code-form">
+      <form class="row" id="code-form" data-for="barcode">
         <label class="sr" for="code">Barcode number</label>
         <input id="code" inputmode="numeric" placeholder="Or type the barcode number" class="field grow">
         <button class="pill">Look up</button>
       </form>
       <button class="pill solid" id="spin-match" hidden>Spin it</button>
     </div>
+  </main>
+
+  <!-- Listening stats -->
+  <main class="view view-stats" data-view="stats" hidden>
+    <header class="bar">
+      <button class="icon-btn" data-go="now" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <div class="tabs push" role="tablist" aria-label="Time range" id="range">
+        <button role="tab" aria-selected="true" data-days="7">Week</button>
+        <button role="tab" aria-selected="false" data-days="30">Month</button>
+        <button role="tab" aria-selected="false" data-days="0">All time</button>
+      </div>
+    </header>
+    <div>
+      <div class="kicker accent" id="stats-kicker">THIS WEEK</div>
+      <h1 class="big-num" id="stats-time">0m</h1>
+      <p class="sub">with the needle down</p>
+    </div>
+    <div class="tiles">
+      <div class="tile"><b id="st-spins">0</b><span class="kicker dim">Spins</span></div>
+      <div class="tile"><b id="st-records">0</b><span class="kicker dim">Records</span></div>
+      <div class="tile"><b id="st-artists">0</b><span class="kicker dim">Artists</span></div>
+    </div>
+    <section class="card">
+      <div class="row between"><span class="kicker dim" id="chart-title">BY DAY</span><span class="kicker dim" id="chart-peak"></span></div>
+      <div class="chart" id="chart" role="img"></div>
+    </section>
+    <section class="card">
+      <div class="kicker dim">MOST SPUN</div>
+      <ol class="ranks" id="top-records"></ol>
+    </section>
+    <section class="card">
+      <div class="kicker dim">TOP ARTISTS</div>
+      <ol class="ranks artists" id="top-artists"></ol>
+    </section>
+    <p class="msg" id="stats-msg" role="status"></p>
   </main>
 
   <!-- Settings -->
@@ -133,6 +177,19 @@
       </div>
     </section>
     <section class="card list" id="status-list"></section>
+    <section class="card stack" id="cover-card">
+      <div class="row between">
+        <span>Cover scan</span>
+        <span class="kicker dim" id="cover-state">TEXT ONLY</span>
+      </div>
+      <p class="hint-text">Without a key, cover scan reads the artist and title printed on the sleeve. Add an Anthropic API key and Claude recognises covers with no text too, for about 1p a scan. <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Get a key</a></p>
+      <form class="row" id="key-form">
+        <label class="sr" for="api-key">Anthropic API key</label>
+        <input id="api-key" type="password" class="field grow" placeholder="sk-ant-…" autocomplete="off">
+        <button class="pill">Save</button>
+      </form>
+      <button class="link" id="key-remove" hidden>Remove key</button>
+    </section>
     <section class="card row between">
       <span>Auto-update nightly</span>
       <button class="switch" role="switch" aria-checked="true" id="auto-update" aria-label="Auto-update nightly"><span></span></button>

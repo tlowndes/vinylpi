@@ -24,6 +24,15 @@ case "${1:-}" in
     [[ "${2:-}" =~ ^[01]$ ]] || { echo "Use 0 or 1" >&2; exit 2; }
     set_env AUTO_UPDATE "$2"
     ;;
+  set-anthropic-key)
+    key="${2:-}"
+    if [[ -z "$key" ]]; then
+      sed -i '/^ANTHROPIC_API_KEY=/d' "$ENV_FILE"; echo "Cover scan key removed"
+    else
+      [[ "$key" =~ ^sk-ant-[A-Za-z0-9_-]{20,200}$ ]] || { echo "That doesn't look like an Anthropic API key (it starts sk-ant-)" >&2; exit 2; }
+      set_env ANTHROPIC_API_KEY "$key"; echo "Cover scan key saved"
+    fi
+    ;;
   update-check)
     "$APP_DIR/scripts/update.sh" --check
     ;;
@@ -43,7 +52,7 @@ case "${1:-}" in
     echo "Joining $ssid"
     ;;
   *)
-    echo "Usage: vinyl-admin.sh restart-stream|set-bitrate|set-auto-update|update-check|update-apply|wifi-connect" >&2
+    echo "Usage: vinyl-admin.sh restart-stream|set-bitrate|set-auto-update|set-anthropic-key|update-check|update-apply|wifi-connect" >&2
     exit 2
     ;;
 esac

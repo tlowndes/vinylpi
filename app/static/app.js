@@ -35,11 +35,15 @@
     if (status.mode === "hotspot") view = "wifi";
     $$(".view").forEach((v) => (v.hidden = v.dataset.view !== view));
     if (view === "settings") loadStatus();
+    if (view === "stats") loadStats();
+    if (view === "scan") setScanMode();
     if (view === "wifi") loadNetworks();
     if (view === "add") setTimeout(() => $("#add-q").focus(), 50);
     history.replaceState(null, "", view === "now" ? "/" : `#${view}`);
     window.scrollTo(0, 0);
   }
+  const VIEWS = ["now", "add", "scan", "settings", "wifi", "stats"];
+  window.addEventListener("hashchange", () => { const v = location.hash.slice(1) || "now"; if (VIEWS.includes(v)) go(v); });
   document.addEventListener("click", (e) => {
     const b = e.target.closest("[data-go]");
     if (b) { e.preventDefault(); go(b.dataset.go); }
@@ -209,11 +213,100 @@
   $$(".tabs button").forEach((t) => t.addEventListener("click", () => {
     scanMode = t.dataset.mode;
     $$(".tabs button").forEach((b) => b.setAttribute("aria-selected", b === t));
-    $("#scan-hint").textContent = scanMode === "barcode"
-      ? "Take a photo of the barcode on the back of the sleeve."
-      : "Cover scan is coming soon. Use the barcode or search for now.";
-    $("#photo").disabled = scanMode !== "barcode";
+    setScanMode();
   }));
+  function setScanMode() {
+    const cover = scanMode === "cover";
+    $("#viewfinder").classList.toggle("cover", cover);
+    $("#code-form").hidden = cover;
+    $("#picks").innerHTML = "";
+    $("#q-form").hidden = true;
+    $("#match").hidden = true; $("#spin-match").hidden = true; match = null;
+    say($("#scan-msg"), "");
+    $("#scan-hint").textContent = !cover
+      ? "Take a photo of the barcode on the back of the sleeve."
+      : status.cover_scan
+        ? "Take a photo of the front cover. Fill the frame and avoid glare."
+        : "Take a photo of the front cover, with the artist and title in shot.";
+  }
+
+  // Phone photos are big; send the Pi a small JPEG.
+  async function shrink(file, max = 1024) {
+    const bmp = await createImageBitmap(file);
+    const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+    return new Promise((ok) => c.toBlob(ok, "image/jpeg", 0.85));
+  }
+
+  // Free mode: read the printed text on the sleeve in the browser, then search MusicBrainz with it.
+  let ocrWorker;
+  async function readCoverText(file) {
+    if (!window.Tesseract) {
+      await new Promise((ok, fail) => {
+        const s = document.createElement("script");
+        s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+        s.onload = ok; s.onerror = () => fail(new Error("Couldn't load the text reader. Is your phone online?"));
+        document.head.appendChild(s);
+      });
+    }
+    if (!ocrWorker) ocrWorker = await Tesseract.createWorker("eng");
+    const bmp = await createImageBitmap(await shrink(file, 1400));
+    const c = document.createElement("canvas");
+    c.width = bmp.width; c.height = bmp.height;
+    const g = c.getContext("2d");
+    g.drawImage(bmp, 0, 0);
+    const words = async () => (await ocrWorker.recognize(c)).data.words
+      .filter((w) => w.confidence > 55 && /[A-Za-z0-9]{2,}/.test(w.text))
+      .map((w, i) => ({ text: w.text.replace(/[^\w'&.-]/g, ""), size: w.bbox.y1 - w.bbox.y0, i }));
+    let found = await words();
+    if (found.length < 2) { // light text on a dark sleeve: try the negative
+      g.globalCompositeOperation = "difference"; g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+      found = found.concat((await words()).map((w) => ({ ...w, i: w.i + 10000 })));
+    }
+    // The biggest lettering is nearly always the artist and the title.
+    const big = found.filter((w) => w.text).sort((a, b) => b.size - a.size).slice(0, 6).sort((a, b) => a.i - b.i); // back into reading order
+    return [...new Set(big.map((w) => w.text))].join(" ");
+  }
+
+  async function showPicks(q, msg, lead) {
+    $("#q-form").hidden = false;
+    $("#cover-q").value = q;
+    if (!q) { $("#picks").innerHTML = ""; return say(msg, "Couldn't read any text. Type what's on the cover, or try the barcode.", true); }
+    say(msg, "Searching MusicBrainz…");
+    let rs = [];
+    try { rs = (await api(`/api/search?q=${encodeURIComponent(q)}`)).slice(0, 4); } catch (e) { return say(msg, e.message, true); }
+    if (!rs.length) { $("#picks").innerHTML = ""; return say(msg, `Nothing found for "${q}". Fix the words above and search again.`, true); }
+    say(msg, lead || "Tap the right one, or fix the words and search again.");
+    $("#picks").innerHTML = rs.map((r, i) => `<button class="pick" data-i="${i}">
+        <div class="art" style="background-image:url('${esc(r.cover)}')"></div>
+        <div><div class="t1">${esc(r.title)}</div><div class="t2">${esc(r.artist)}${r.year ? " · " + esc(r.year) : ""}</div></div>
+      </button>`).join("");
+    $$(".pick").forEach((b) => b.addEventListener("click", () => spin({ release_group: rs[b.dataset.i].release_group }, msg)));
+  }
+  $("#q-form").addEventListener("submit", (e) => { e.preventDefault(); showPicks($("#cover-q").value.trim(), $("#scan-msg")); });
+
+  async function scanCover(file) {
+    const msg = $("#scan-msg");
+    $("#picks").innerHTML = "";
+    if (!status.cover_scan) {
+      say(msg, "Reading the text on the cover…");
+      try { return await showPicks(await readCoverText(file), msg); } catch (e) { return say(msg, e.message, true); }
+    }
+    say(msg, "Asking Claude what this is…");
+    try {
+      const fd = new FormData();
+      fd.append("photo", await shrink(file), "cover.jpg");
+      const res = await fetch("/api/cover", { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Cover scan failed");
+      const f = data.found || {};
+      const what = f.title ? `${f.title}${f.artist ? " by " + f.artist : ""}` : "";
+      if (!what) return say(msg, "Claude couldn't recognise that one. Try again closer up, or use the barcode.", true);
+      await showPicks(data.query || what, msg, `Looks like ${what}. Tap the right one.`);
+    } catch (e) { say(msg, e.message, true); }
+  }
 
   async function decode(file) {
     const bitmap = await createImageBitmap(file);
@@ -261,6 +354,7 @@
     shot.src = URL.createObjectURL(file);
     shot.hidden = false;
     $("#photo-label").textContent = "Retake";
+    if (scanMode === "cover") { await scanCover(file); e.target.value = ""; return; }
     say($("#scan-msg"), "Reading the barcode…");
     try {
       const code = await decode(file);
@@ -305,6 +399,10 @@
     $("#status-list").innerHTML = rows.map(([l, v, c]) =>
       `<div class="item"><span class="dot ${c}"></span><span class="lbl">${esc(l)}</span><span class="val">${esc(v)}</span></div>`).join("");
     $("#auto-update").setAttribute("aria-checked", status.auto_update);
+    $("#cover-state").textContent = status.cover_scan ? "CLAUDE" : "TEXT ONLY";
+    $("#cover-state").classList.toggle("accent", !!status.cover_scan);
+    $("#key-remove").hidden = !status.cover_scan;
+    $("#api-key").placeholder = status.cover_scan ? "Key saved. Paste a new one to replace it" : "sk-ant-…";
     $("#bitrate").value = status.bitrate;
   }
   const smsg = $("#settings-msg");
@@ -341,6 +439,18 @@
     try { await api("/api/settings", { method: "POST", body: { bitrate: e.target.value } }); say(smsg, "Done. Press play again to hear it."); }
     catch (err) { say(smsg, err.message, true); }
   });
+  async function saveKey(key) {
+    say(smsg, key ? "Saving key…" : "Removing key…");
+    try {
+      const r = await api("/api/settings", { method: "POST", body: { anthropic_key: key } });
+      say(smsg, r.message || "Saved.");
+      $("#api-key").value = "";
+      loadStatus();
+    } catch (err) { say(smsg, err.message, true); }
+  }
+  $("#key-form").addEventListener("submit", (e) => { e.preventDefault(); const k = $("#api-key").value.trim(); if (k) saveKey(k); });
+  $("#key-remove").addEventListener("click", () => saveKey(""));
+
   $("#restart-stream").addEventListener("click", async () => {
     say(smsg, "Restarting the stream…");
     try { await api("/api/restart-stream", { method: "POST" }); say(smsg, "Stream restarted."); } catch (err) { say(smsg, err.message, true); }
@@ -385,10 +495,46 @@
     catch (err) { say(msg, err.message, true); }
   });
 
+  /* ---------- listening stats ---------- */
+  let statDays = 7;
+  const hm = (m) => (m >= 60 ? `${Math.floor(m / 60)}<small>h</small>${m % 60 ? ` ${m % 60}<small>m</small>` : ""}` : `${m}<small>m</small>`);
+  const hmText = (m) => (m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`);
+  $$("#range button").forEach((b) => b.addEventListener("click", () => {
+    statDays = +b.dataset.days;
+    $$("#range button").forEach((x) => x.setAttribute("aria-selected", x === b));
+    loadStats();
+  }));
+  async function loadStats() {
+    let s;
+    try { s = await api(`/api/stats?days=${statDays}`); } catch (e) { return say($("#stats-msg"), e.message, true); }
+    say($("#stats-msg"), "");
+    $("#stats-kicker").textContent = { 7: "THIS WEEK", 30: "LAST 30 DAYS", 0: "ALL TIME" }[s.days];
+    $("#stats-time").innerHTML = hm(s.minutes);
+    $("#st-spins").textContent = s.spins; $("#st-records").textContent = s.records; $("#st-artists").textContent = s.artists;
+    $("#chart-title").textContent = s.days ? "BY DAY" : "BY WEEK";
+    const max = Math.max(1, ...s.chart.map((c) => c.minutes));
+    const peak = s.chart.reduce((a, c) => (c.minutes > a.minutes ? c : a), s.chart[0]);
+    $("#chart-peak").textContent = peak && peak.minutes ? `BEST ${peak.label.toUpperCase()} · ${hmText(peak.minutes)}` : "";
+    const chart = $("#chart");
+    const n = s.chart.length, step = n > 14 ? 5 : n > 8 ? 3 : 1; // label every few bars, counting back from today
+    chart.setAttribute("aria-label", s.chart.map((c) => `${c.label}: ${hmText(c.minutes)}`).join(", "));
+    chart.innerHTML = s.chart.map((c, i) => `<div class="col${i === s.chart.length - 1 ? " today" : ""}" title="${esc(c.label)} · ${hmText(c.minutes)}">
+        <div class="b${c.minutes ? " on" : ""}" style="height:${c.minutes ? Math.max(4, (c.minutes / max) * 100) : 0}%"></div><span class="l">${(n - 1 - i) % step ? "" : esc(c.label)}</span></div>`).join("");
+    const none = (t) => `<li class="none">${t}</li>`;
+    $("#top-records").innerHTML = s.top_records.length ? s.top_records.map((r) => `<li>
+        <div class="art" style="${r.cover ? `background-image:url('${esc(r.cover)}')` : ""}"></div>
+        <div style="min-width:0"><div class="t1">${esc(r.title)}</div><div class="t2">${esc(r.artist)}${r.year ? " · " + esc(r.year) : ""}</div></div>
+        <span class="n">${r.spins}×</span></li>`).join("") : none("Nothing spun yet. Set what's playing and it'll show up here.");
+    const topA = Math.max(1, ...s.top_artists.map((a) => a.spins));
+    $("#top-artists").innerHTML = s.top_artists.length ? s.top_artists.map((a) => `<li>
+        <div style="min-width:0"><div class="t1">${esc(a.artist)}</div><div class="bar-fill" style="width:${(a.spins / topA) * 100}%"></div></div>
+        <span class="n">${a.spins} · ${hmText(a.minutes)}</span></li>`).join("") : none("No artists yet.");
+  }
+
   /* ---------- live updates ---------- */
   function connect() {
     const es = new EventSource("/api/events");
-    es.onmessage = (e) => { state = JSON.parse(e.data); render(); };
+    es.onmessage = (e) => { state = JSON.parse(e.data); render(); if (!$('[data-view="stats"]').hidden) loadStats(); };
     es.onopen = () => refreshLive();
     es.onerror = () => { say($("#live"), "● RECONNECTING", true); };
   }
@@ -405,7 +551,7 @@
     await refreshLive();
     const start = location.hash.slice(1);
     if (status.mode === "hotspot") go("wifi");
-    else if (["add", "scan", "settings", "wifi"].includes(start)) go(start);
+    else if (VIEWS.includes(start) && start !== "now") go(start);
     connect();
   })();
 })();

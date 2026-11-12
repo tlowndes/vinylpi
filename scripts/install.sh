@@ -9,7 +9,7 @@ set -euo pipefail
 MODE="${1:-live}"; MODE="${MODE#--}"
 APP_DIR=/opt/vinyl-pi
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PACKAGES=(icecast2 ffmpeg alsa-utils avahi-daemon git curl network-manager python3 python3-flask python3-waitress)
+PACKAGES=(icecast2 ffmpeg alsa-utils avahi-daemon git curl network-manager python3 python3-flask python3-waitress python3-venv)
 
 step() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 
@@ -36,6 +36,13 @@ id vinyl &>/dev/null || useradd --system --user-group --no-create-home --shell /
 install -d -o vinyl -g vinyl /var/lib/vinyl-pi /var/lib/vinyl-pi/covers
 install -d /etc/vinyl-pi
 chmod +x "$APP_DIR"/scripts/*.sh
+
+step "Setting up Python extras"
+# Cover scan uses the Anthropic SDK, which Raspberry Pi OS doesn't package. Keep it in a venv.
+[[ -x "$APP_DIR/.venv/bin/python" ]] || python3 -m venv --system-site-packages "$APP_DIR/.venv"
+# Never let a failed download (Pi offline during an update) stop the install: cover scan just says it isn't ready.
+"$APP_DIR/.venv/bin/pip" install --quiet --disable-pip-version-check -r "$APP_DIR/app/requirements.txt" \
+  || echo "Couldn't install Python extras right now; cover scan will be off until the next update." >&2
 
 step "Installing services"
 for unit in vinyl-stream.service vinyl-web.service vinyl-wifi.service vinyl-update.service vinyl-update.timer vinyl-firstboot.service; do

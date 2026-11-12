@@ -8,7 +8,8 @@ Turntable ──USB──▶ Raspberry Pi 3 ──Wi-Fi/LAN──▶ Browser on 
 ```
 
 - **Player** with a live level meter, in the browser. No app needed.
-- **Now playing:** search MusicBrainz, scan the barcode with your phone, or type it in. Cover, tracklist and the current side show up for everyone listening.
+- **Now playing:** search MusicBrainz, scan the barcode or the front cover with your phone, or type it in. Cover, tracklist and the current side show up for everyone listening.
+- **Listening stats:** hours with the needle down, most-spun records and top artists, by week, month or all time.
 - **Looks after itself:** Wi-Fi watchdog with a rescue hotspot, and nightly updates from GitHub that roll back if anything breaks.
 
 ## What you need
@@ -49,12 +50,20 @@ The installer sets up Icecast, FFmpeg, the web app and the background services, 
 ## Using it
 
 - **Listen:** open `http://vinyl.local` and press play. Expect a few seconds' delay behind the record. That buffer keeps playback smooth over Wi-Fi.
-- **Set what's playing:** tap **New record**, then search, scan the barcode on the sleeve, or type it in.
+- **Set what's playing:** tap **New record**, then search, scan the barcode or cover, or type it in.
+- **Stats:** the chart icon at the top of the player.
 - **Flip side:** moves the tracklist to the next side.
 - **Settings** (top-right icon): bitrate, restart stream, updates, Wi-Fi, and the Pi's temperature.
 - **VLC or other players:** the raw stream is `http://vinyl.local:8000/vinyl`.
 
 > On Android, `.local` names sometimes don't resolve. Use the Pi's IP address instead (your router's device list shows it).
+
+## Cover scan
+
+Two modes, set in **Settings → Cover scan**:
+
+- **Text only (free, default):** your phone reads the artist and title printed on the sleeve, then searches MusicBrainz. You can fix the words before searching.
+- **Claude:** paste an [Anthropic API key](https://console.anthropic.com/settings/keys) and Claude recognises the cover from the artwork, even with no text on it. About 1p a scan, billed to your Anthropic account. The key stays on the Pi.
 
 ## Wi-Fi rescue
 
@@ -98,16 +107,17 @@ It records 10 seconds and reports the level. Aim for a `max_volume` around -1 to
 | --- | --- |
 | `scripts/stream.sh` | Finds the USB audio device and encodes it to MP3 with FFmpeg |
 | Icecast | Serves the stream on port 8000 |
-| `app/` | Flask web app on port 80: player, now playing, settings, live updates |
+| `app/` | Flask web app on port 80: player, now playing, stats, settings, live updates |
+| `app/cover.py` | Cover recognition with Claude (optional, needs an API key) |
 | `scripts/wifi.sh` | Wi-Fi watchdog and rescue hotspot |
 | `scripts/update.sh` | Pulls from GitHub, health-checks, rolls back on failure |
 | `scripts/vinyl-admin.sh` | The only thing the web app may run as root; checks every input |
 | `image/` | Builds the ready-to-flash image with GitHub Actions |
 
-Settings and passwords live in `/etc/vinyl-pi/vinyl.env`, never in the repo. Album info comes from [MusicBrainz](https://musicbrainz.org) and the [Cover Art Archive](https://coverartarchive.org).
+Settings and passwords live in `/etc/vinyl-pi/vinyl.env`, never in the repo. Free cover text reading uses [Tesseract.js](https://tesseract.projectnaptha.com) in your browser. Album info comes from [MusicBrainz](https://musicbrainz.org) and the [Cover Art Archive](https://coverartarchive.org).
 
 ## Roadmap
 
 - [x] Phase 1: stream to the browser
 - [x] Phase 2: web UI, now playing (search and barcode), Wi-Fi rescue, updates, Pi image
-- [ ] Phase 3: cover photo scan, listening stats
+- [x] Phase 3: cover scan (free text reading or Claude) and listening stats

@@ -8,7 +8,9 @@ import uuid
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 
+import cover
 import musicbrainz as mb
+import stats
 import system
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -16,8 +18,10 @@ STATIC = os.path.join(HERE, "static")
 DATA_DIR = system.DATA_DIR
 COVERS = os.path.join(DATA_DIR, "covers")
 STATE_FILE = os.path.join(DATA_DIR, "state.json")
+plays = stats.PlayLog(os.path.join(DATA_DIR, "plays.jsonl"))
 
 app = Flask(__name__, static_folder=None)
+app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
 _lock = threading.Lock()
 _subscribers = []
 
@@ -31,6 +35,7 @@ def _load():
 
 
 state = _load()
+plays.seed(state.get("history", []))
 
 
 def _save_and_broadcast():
@@ -52,15 +57,22 @@ def _side_of(number):
     return number[0].upper() if number and number[0].isalpha() else None
 
 
+def _retire_now():
+    """Move the record on the platter to history and the play log. Call with _lock held."""
+    old = state.get("now")
+    if old:
+        old["ended_at"] = time.time()
+        state["history"] = ([old] + state.get("history", []))[:100]
+        plays.add(old, old["ended_at"])
+
+
 def _set_now(rec):
     """Make rec the record on the platter, moving the old one to history."""
     with _lock:
-        old = state.get("now")
-        if old:
-            old["ended_at"] = time.time()
-            state["history"] = ([old] + state.get("history", []))[:100]
+        _retire_now()
         sides = sorted({s for s in (_side_of(t["number"]) for t in rec.get("tracks", [])) if s})
-        rec.update({"id": uuid.uuid4().hex[:12], "started_at": time.time(), "side": sides[0] if sides else "A", "sides": sides or ["A", "B"]})
+        t = time.time()
+        rec.update({"id": uuid.uuid4().hex[:12], "started_at": t, "set_at": t, "side": sides[0] if sides else "A", "sides": sides or ["A", "B"]})
         state["now"] = rec
         state["spins"] = state.get("spins", 0) + 1
         _save_and_broadcast()
@@ -162,13 +174,20 @@ def flip():
 @app.post("/api/clear")
 def clear():
     with _lock:
-        old = state.get("now")
-        if old:
-            old["ended_at"] = time.time()
-            state["history"] = ([old] + state.get("history", []))[:100]
+        _retire_now()
         state["now"] = None
         _save_and_broadcast()
     return {"ok": True}
+
+
+@app.get("/api/stats")
+def get_stats():
+    try:
+        days = int(request.args.get("days", 7))
+    except ValueError:
+        days = 7
+    days = days if days in (0, 7, 30) else 7
+    return jsonify(stats.summary(plays.entries(), state.get("now"), days))
 
 
 # ---------- lookup ----------
@@ -191,6 +210,25 @@ def barcode(code):
         return {"error": "No record with that barcode on MusicBrainz"}, 404
     return jsonify({"release": d["release"], "release_group": d["release_group"], "title": d["title"],
                     "artist": d["artist"], "year": d["year"], "label": d["label"], "cover": d["cover_url"]})
+
+
+@app.post("/api/cover")
+def cover_scan():
+    photo = request.files.get("photo")
+    if not photo:
+        return {"error": "No photo"}, 400
+    data = photo.read(6 * 1024 * 1024 + 1)
+    if len(data) > 6 * 1024 * 1024:
+        return {"error": "That photo is too big"}, 413
+    try:
+        found = cover.identify(data, system.env().get("ANTHROPIC_API_KEY", ""))
+    except cover.CoverError as exc:
+        return {"error": str(exc)}, 502
+    q = found["search"] or " ".join(x for x in (found["artist"], found["title"]) if x)
+    if found["confidence"] == "low":
+        found["artist"] = found["title"] = ""
+        q = ""
+    return jsonify({"found": found, "query": q})
 
 
 # ---------- Pi ----------
@@ -218,6 +256,8 @@ def settings():
     results = []
     if "bitrate" in body:
         results.append(system.admin("set-bitrate", str(body["bitrate"])))
+    if "anthropic_key" in body:
+        results.append(system.admin("set-anthropic-key", str(body["anthropic_key"]).strip()))
     if "auto_update" in body:
         results.append(system.admin("set-auto-update", "1" if body["auto_update"] else "0"))
     ok = all(r[0] for r in results)
