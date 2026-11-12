@@ -1,0 +1,12 @@
+[Unit]
+Description=Vinyl Pi: first boot setup (passwords and Icecast)
+ConditionPathExists=!/etc/vinyl-pi/vinyl.env
+Before=icecast2.service vinyl-stream.service vinyl-web.service vinyl-wifi.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/vinyl-pi/scripts/configure.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

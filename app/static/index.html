@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0A0A0B">
+<title>Vinyl Pi</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%230A0A0B'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%238FB8F0'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div id="app" class="app">
+
+  <!-- Now playing -->
+  <main class="view view-now" data-view="now">
+    <section class="stage">
+     <div class="top">
+      <header class="bar">
+        <span class="kicker live" id="live">● CONNECTING</span>
+        <button class="icon-btn push" data-go="stats" aria-label="Listening stats">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M12 20V4M19 20v-6"/></svg>
+        </button>
+        <button class="icon-btn" data-go="settings" aria-label="Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+        </button>
+      </header>
+      <div class="deck">
+        <div class="disc" aria-hidden="true"><div class="label"></div></div>
+        <div class="sleeve" id="sleeve" role="img" aria-label="Album cover"></div>
+      </div>
+     </div>
+
+    <div class="meta">
+      <div class="kicker accent" id="side-line">NOTHING ON THE PLATTER</div>
+      <h1 id="title">Drop the needle</h1>
+      <p class="sub" id="artist">Then tell Vinyl Pi what's spinning.</p>
+      <ol class="tracks" id="tracks"></ol>
+
+      <div class="meter" id="meter" role="img" aria-label="Live input level"></div>
+
+      <div class="controls">
+        <button class="play" id="play" aria-label="Play">
+          <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z" fill="currentColor" stroke="none"/></svg>
+          <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none"/></svg>
+        </button>
+        <button class="pill" id="flip">Flip side</button>
+        <button class="pill" data-go="add">New record</button>
+      </div>
+      <label class="volume"><span class="kicker">VOL</span><input type="range" id="volume" min="0" max="1" step="0.01" value="0.8"></label>
+    </div>
+    </section>
+
+    <aside class="side">
+      <form class="search" data-search>
+        <label class="kicker" for="side-q">FIND A RECORD</label>
+        <input id="side-q" name="q" placeholder="Artist or album" autocomplete="off">
+      </form>
+      <div class="row between"><span class="kicker dim">EARLIER</span><button class="link" data-go="stats">Your stats</button></div>
+      <ul class="history" id="history"></ul>
+    </aside>
+  </main>
+
+  <!-- Add record -->
+  <main class="view view-add" data-view="add" hidden>
+    <header class="bar">
+      <button class="icon-btn" data-go="now" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <span class="kicker dim">SEARCH · MUSICBRAINZ</span>
+    </header>
+    <h1>New record</h1>
+    <form class="search big" data-search>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+      <label class="sr" for="add-q">Search artist or album</label>
+      <input id="add-q" name="q" placeholder="Artist or album" autocomplete="off" enterkeyhint="search">
+    </form>
+    <div class="row">
+      <button class="pill grow" data-go="scan">Scan barcode</button>
+      <button class="pill grow" id="manual-open">Type it in</button>
+    </div>
+    <form class="manual card" id="manual" hidden>
+      <label>Album <input name="title" required></label>
+      <label>Artist <input name="artist"></label>
+      <button class="pill solid">Spin it</button>
+    </form>
+    <p class="msg" id="add-msg" role="status"></p>
+    <div class="results" id="results"></div>
+  </main>
+
+  <!-- Scan -->
+  <main class="view view-scan" data-view="scan" hidden>
+    <div class="viewfinder" id="viewfinder">
+      <img id="shot" alt="Your photo of the sleeve" hidden>
+      <div class="frame" aria-hidden="true"></div>
+      <p class="hint" id="scan-hint">Take a photo of the barcode on the back of the sleeve.</p>
+    </div>
+    <header class="bar float">
+      <button class="icon-btn glass" data-go="add" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      <div class="tabs glass" role="tablist" aria-label="Scan mode">
+        <button role="tab" aria-selected="true" data-mode="barcode">Barcode</button>
+        <button role="tab" aria-selected="false" data-mode="cover">Cover</button>
+      </div>
+    </header>
+    <div class="sheet">
+      <div class="match" id="match" hidden>
+        <img id="match-art" alt="">
+        <div><div class="match-title" id="match-title"></div><div class="sub" id="match-meta"></div></div>
+      </div>
+      <p class="msg" id="scan-msg" role="status"></p>
+      <form class="row" id="q-form" hidden>
+        <label class="sr" for="cover-q">Search for</label>
+        <input id="cover-q" class="field grow" placeholder="Artist or album" autocomplete="off" enterkeyhint="search">
+        <button class="pill">Search</button>
+      </form>
+      <div class="picks" id="picks"></div>
+      <label class="pill solid file">
+        <input type="file" id="photo" accept="image/*" capture="environment">
+        <span id="photo-label">Take photo</span>
+      </label>
+      <form class="row" id="code-form" data-for="barcode">
+        <label class="sr" for="code">Barcode number</label>
+        <input id="code" inputmode="numeric" placeholder="Or type the barcode number" class="field grow">
+        <button class="pill">Look up</button>
+      </form>
+      <button class="pill solid" id="spin-match" hidden>Spin it</button>
+    </div>
+  </main>
+
+  <!-- Listening stats -->
+  <main class="view view-stats" data-view="stats" hidden>
+    <header class="bar">
+      <button class="icon-btn" data-go="now" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <div class="tabs push" role="tablist" aria-label="Time range" id="range">
+        <button role="tab" aria-selected="true" data-days="7">Week</button>
+        <button role="tab" aria-selected="false" data-days="30">Month</button>
+        <button role="tab" aria-selected="false" data-days="0">All time</button>
+      </div>
+    </header>
+    <div>
+      <div class="kicker accent" id="stats-kicker">THIS WEEK</div>
+      <h1 class="big-num" id="stats-time">0m</h1>
+      <p class="sub">with the needle down</p>
+    </div>
+    <div class="tiles">
+      <div class="tile"><b id="st-spins">0</b><span class="kicker dim">Spins</span></div>
+      <div class="tile"><b id="st-records">0</b><span class="kicker dim">Records</span></div>
+      <div class="tile"><b id="st-artists">0</b><span class="kicker dim">Artists</span></div>
+    </div>
+    <section class="card">
+      <div class="row between"><span class="kicker dim" id="chart-title">BY DAY</span><span class="kicker dim" id="chart-peak"></span></div>
+      <div class="chart" id="chart" role="img"></div>
+    </section>
+    <section class="card">
+      <div class="kicker dim">MOST SPUN</div>
+      <ol class="ranks" id="top-records"></ol>
+    </section>
+    <section class="card">
+      <div class="kicker dim">TOP ARTISTS</div>
+      <ol class="ranks artists" id="top-artists"></ol>
+    </section>
+    <p class="msg" id="stats-msg" role="status"></p>
+  </main>
+
+  <!-- Settings -->
+  <main class="view view-settings" data-view="settings" hidden>
+    <header class="bar">
+      <button class="icon-btn" data-go="now" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <span class="kicker dim" id="ver"></span>
+    </header>
+    <h1>Settings</h1>
+    <section class="card tint" id="update-card">
+      <div class="kicker accent" id="update-line">UPDATES</div>
+      <p id="update-text">Checking GitHub…</p>
+      <div class="row">
+        <button class="pill solid" id="update-apply" hidden>Update now</button>
+        <button class="pill" id="update-check">Check now</button>
+      </div>
+    </section>
+    <section class="card list" id="status-list"></section>
+    <section class="card stack" id="cover-card">
+      <div class="row between">
+        <span>Cover scan</span>
+        <span class="kicker dim" id="cover-state">TEXT ONLY</span>
+      </div>
+      <p class="hint-text">Without a key, cover scan reads the artist and title printed on the sleeve. Add an Anthropic API key and Claude recognises covers with no text too, for about 1p a scan. <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Get a key</a></p>
+      <form class="row" id="key-form">
+        <label class="sr" for="api-key">Anthropic API key</label>
+        <input id="api-key" type="password" class="field grow" placeholder="sk-ant-…" autocomplete="off">
+        <button class="pill">Save</button>
+      </form>
+      <button class="link" id="key-remove" hidden>Remove key</button>
+    </section>
+    <section class="card row between">
+      <span>Auto-update nightly</span>
+      <button class="switch" role="switch" aria-checked="true" id="auto-update" aria-label="Auto-update nightly"><span></span></button>
+    </section>
+    <section class="card row between">
+      <label for="bitrate">Stream quality</label>
+      <select id="bitrate">
+        <option value="320k">320 kbps, best</option>
+        <option value="192k">192 kbps, patchy Wi-Fi</option>
+      </select>
+    </section>
+    <p class="msg" id="settings-msg" role="status"></p>
+    <div class="row bottom">
+      <button class="pill grow" id="restart-stream">Restart stream</button>
+      <button class="pill grow" data-go="wifi">Change Wi-Fi</button>
+    </div>
+  </main>
+
+  <!-- Wi-Fi rescue -->
+  <main class="view view-wifi" data-view="wifi" hidden>
+    <header class="bar"><span class="kicker" id="wifi-kicker">WI-FI</span></header>
+    <div class="badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2 9a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0"/><circle cx="12" cy="19.5" r="1" fill="currentColor"/></svg></div>
+    <h1 id="wifi-title">Change Wi-Fi</h1>
+    <p class="sub" id="wifi-text">Pick a network and Vinyl Pi will join it.</p>
+    <div class="card nets" id="nets"></div>
+    <form id="wifi-form" class="stack">
+      <label class="sr" for="wifi-pass">Wi-Fi password</label>
+      <input id="wifi-pass" type="password" class="field" placeholder="Password" autocomplete="off">
+      <p class="msg" id="wifi-msg" role="status"></p>
+      <button class="pill solid">Connect</button>
+    </form>
+    <button class="pill" data-go="settings" id="wifi-back">Back to settings</button>
+  </main>
+</div>
+
+<audio id="audio" preload="none" crossorigin="anonymous"></audio>
+<script src="/static/app.js"></script>
+</body>
+</html>

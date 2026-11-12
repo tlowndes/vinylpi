@@ -1,0 +1,13 @@
+[Unit]
+Description=Vinyl Pi: Wi-Fi watchdog and rescue hotspot
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=simple
+ExecStart=/opt/vinyl-pi/scripts/wifi.sh watch
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

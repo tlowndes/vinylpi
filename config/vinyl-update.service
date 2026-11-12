@@ -1,0 +1,8 @@
+[Unit]
+Description=Vinyl Pi: update from GitHub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/vinyl-pi/scripts/update.sh --auto
