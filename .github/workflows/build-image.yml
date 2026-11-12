@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   image:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
@@ -26,6 +26,25 @@ jobs:
           git -C src/image/stage-vinylpi/00-vinylpi/files/vinyl-pi remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
           git -C src/image/stage-vinylpi/00-vinylpi/files/vinyl-pi checkout -B main
 
+      # pi-gen needs ~15 GB. The action's own increase-runner-disk-size step fails with an apt error
+      # on current runners, so free the space by deleting preinstalled toolchains instead.
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost /usr/share/swift /usr/local/share/powershell /usr/local/share/chromium
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          df -h /
+
+      # pi-gen needs a password to skip the first-boot user setup. Nobody logs in as pi (SSH is off and
+      # the web app does everything), so give it a random one that is never stored or shown.
+      - name: Random password for the pi user
+        id: pw
+        run: |
+          pw=$(openssl rand -base64 30 | tr -d '/+=')
+          echo "::add-mask::$pw"
+          echo "pw=$pw" >> "$GITHUB_OUTPUT"
+
       - uses: usimd/pi-gen-action@v1
         id: build
         with:
@@ -35,6 +54,7 @@ jobs:
           stage-list: stage0 stage1 stage2 ./src/image/stage-vinylpi
           hostname: vinyl
           username: pi
+          password: ${{ steps.pw.outputs.pw }}
           enable-ssh: 0              # no shell with a default password; use the manual install if you want SSH
           disable-first-boot-user-rename: 1
           locale: en_GB.UTF-8
@@ -43,7 +63,8 @@ jobs:
           timezone: Europe/London
           wpa-country: GB
           compression: xz
-          increase-runner-disk-size: true
+          increase-runner-disk-size: false
+          verbose-output: true
 
       - uses: actions/upload-artifact@v4
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
