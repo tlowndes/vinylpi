@@ -36,6 +36,15 @@ jobs:
           sudo docker image prune --all --force >/dev/null 2>&1 || true
           df -h /
 
+      # pi-gen needs a password to skip the first-boot user setup. Nobody logs in as pi (SSH is off and
+      # the web app does everything), so give it a random one that is never stored or shown.
+      - name: Random password for the pi user
+        id: pw
+        run: |
+          pw=$(openssl rand -base64 30 | tr -d '/+=')
+          echo "::add-mask::$pw"
+          echo "pw=$pw" >> "$GITHUB_OUTPUT"
+
       - uses: usimd/pi-gen-action@v1
         id: build
         with:
@@ -45,6 +54,7 @@ jobs:
           stage-list: stage0 stage1 stage2 ./src/image/stage-vinylpi
           hostname: vinyl
           username: pi
+          password: ${{ steps.pw.outputs.pw }}
           enable-ssh: 0              # no shell with a default password; use the manual install if you want SSH
           disable-first-boot-user-rename: 1
           locale: en_GB.UTF-8
