@@ -66,17 +66,36 @@ json.dump(nets, open("'"$RUN/networks.json"'", "w"))
 '
 }
 
+hotspot_active() { nmcli -t -f NAME con show --active 2>/dev/null | grep -qx "$HOTSPOT_NAME"; }
+
 start_hotspot() {
   log "opening hotspot $HOTSPOT_NAME"
+  rfkill unblock wifi 2>/dev/null; nmcli radio wifi on 2>/dev/null
   scan
-  nmcli con show "$HOTSPOT_NAME" >/dev/null 2>&1 || nmcli con add type wifi ifname "$IFACE" con-name "$HOTSPOT_NAME" \
-    autoconnect no ssid "$HOTSPOT_NAME" mode ap ipv4.method shared ipv6.method disabled \
-    wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$HOTSPOT_PASS" >/dev/null
-  nmcli con modify "$HOTSPOT_NAME" wifi-sec.psk "$HOTSPOT_PASS" >/dev/null 2>&1
-  if nmcli con up "$HOTSPOT_NAME" >/dev/null 2>&1; then
-    now >"$RUN/hotspot"
-    status_json hotspot 1
+  # Start clean each time so an old or half-made profile can't get in the way.
+  nmcli con delete "$HOTSPOT_NAME" >/dev/null 2>&1
+  local out
+  # NetworkManager's own hotspot command: WPA2 only (RSN + CCMP), which the Pi's Broadcom chip needs.
+  # A generic "mode ap" profile also offers WPA1/TKIP, and the Pi 3 refuses to start an AP like that.
+  if ! out=$(nmcli dev wifi hotspot ifname "$IFACE" con-name "$HOTSPOT_NAME" ssid "$HOTSPOT_NAME" \
+      band bg password "$HOTSPOT_PASS" 2>&1); then
+    log "hotspot command failed: $out"
+    nmcli con delete "$HOTSPOT_NAME" >/dev/null 2>&1
+    # Fallback: the same settings spelled out, in case this NetworkManager lacks the hotspot command.
+    nmcli con add type wifi ifname "$IFACE" con-name "$HOTSPOT_NAME" autoconnect no ssid "$HOTSPOT_NAME" \
+      802-11-wireless.mode ap 802-11-wireless.band bg ipv4.method shared ipv6.method disabled \
+      wifi-sec.key-mgmt wpa-psk wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp \
+      wifi-sec.psk "$HOTSPOT_PASS" >/dev/null 2>&1
+    if ! out=$(nmcli con up "$HOTSPOT_NAME" 2>&1); then
+      log "couldn't open hotspot: $out"
+      status_json last_error "Couldn't open the setup hotspot: ${out:0:200}"
+      return 1
+    fi
   fi
+  nmcli con modify "$HOTSPOT_NAME" connection.autoconnect no >/dev/null 2>&1
+  log "hotspot $HOTSPOT_NAME is up"
+  now >"$RUN/hotspot"
+  status_json hotspot 1 last_error ""
 }
 
 stop_hotspot() {
@@ -104,11 +123,15 @@ watch() {
   local down_since=0 kicked=0
   status_json started "$(now)" hotspot 0
   rm -f "$RUN/hotspot"
+  rfkill unblock wifi 2>/dev/null; nmcli radio wifi on 2>/dev/null
+  log "watching $IFACE (saved Wi-Fi: $(saved_wifi && echo yes || echo none))"
   while true; do
     sleep "$CHECK_EVERY"
     exec 9>"$LOCK"
     flock -n 9 || continue   # a join is in progress
-    if hotspot_on; then
+    if hotspot_on && ! hotspot_active; then
+      log "hotspot dropped, reopening"; rm -f "$RUN/hotspot"; start_hotspot
+    elif hotspot_on; then
       if (( $(now) - $(cat "$RUN/hotspot") > HOTSPOT_FOR )) && saved_wifi; then
         stop_hotspot
         if wait_online 45; then
@@ -123,9 +146,13 @@ watch() {
     else
       (( down_since )) || down_since=$(now)
       local gone=$(( $(now) - down_since ))
-      if (( gone >= KICK_AFTER && ! kicked )); then kick; kicked=1; fi
-      # No Wi-Fi set up at all (fresh image): offer the hotspot after the first kick.
-      if (( gone >= HOTSPOT_AFTER )) || { (( kicked )) && ! saved_wifi; }; then start_hotspot; fi
+      if ! saved_wifi; then
+        # Fresh Pi with no Wi-Fi set up: nothing to wait for, so offer the hotspot straight away.
+        log "no Wi-Fi set up yet"; start_hotspot
+      else
+        if (( gone >= KICK_AFTER && ! kicked )); then kick; kicked=1; fi
+        if (( gone >= HOTSPOT_AFTER )); then start_hotspot; fi
+      fi
     fi
     flock -u 9
   done

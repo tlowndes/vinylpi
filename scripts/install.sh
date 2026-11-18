@@ -9,7 +9,7 @@ set -euo pipefail
 MODE="${1:-live}"; MODE="${MODE#--}"
 APP_DIR=/opt/vinyl-pi
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PACKAGES=(icecast2 ffmpeg alsa-utils avahi-daemon git curl network-manager python3 python3-flask python3-waitress python3-venv)
+PACKAGES=(icecast2 ffmpeg alsa-utils avahi-daemon git curl network-manager python3 python3-flask python3-waitress python3-venv rfkill iw dnsmasq-base)
 
 step() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 
