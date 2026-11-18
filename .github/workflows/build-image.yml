@@ -4,6 +4,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish as a release with this tag, e.g. v1.0.0 (leave empty for a download on the run page)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -67,12 +72,17 @@ jobs:
           verbose-output: true
 
       - uses: actions/upload-artifact@v4
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        if: ${{ !startsWith(github.ref, 'refs/tags/') && !inputs.release }}
         with:
           name: vinylpi-image
           path: ${{ steps.build.outputs.image-path }}
 
       - uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
+        if: ${{ startsWith(github.ref, 'refs/tags/') || inputs.release }}
         with:
+          # From a tag push this is that tag; from "Run workflow" it creates the tag on the commit that was built.
+          tag_name: ${{ inputs.release || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: Vinyl Pi ${{ inputs.release || github.ref_name }}
+          generate_release_notes: true
           files: ${{ steps.build.outputs.image-path }}

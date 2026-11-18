@@ -8,4 +8,4 @@
 
 SSH is off in the image, so there is no login with a default password. Use the manual install in the main README if you want SSH.
 
-Push a tag like `v1.0.0` and the image is attached to that GitHub release. Or run the workflow by hand from the Actions tab and download it as an artifact.
+To publish a release with the image attached, either push a tag like `v1.0.0`, or open **Actions → Build Pi image → Run workflow** and type the tag (e.g. `v1.0.0`) in the release box. Leave the box empty to get the image as a download on the run page instead.
