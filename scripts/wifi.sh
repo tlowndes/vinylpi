@@ -20,6 +20,24 @@ LOCK="$RUN/wifi.lock"
 mkdir -p "$RUN"
 
 log() { echo "wifi: $*"; }
+BOOT_LOG=/boot/firmware/vinylpi-wifi-log.txt
+
+# Write a status report to the SD card's boot partition, so it can be read on any computer
+# when the Pi can't be reached over the network.
+diag() {
+  [[ -d /boot/firmware ]] || return 0
+  {
+    echo "Vinyl Pi Wi-Fi report, $(date)"
+    echo; echo "== Board";       tr -d '\0' </proc/device-tree/model 2>/dev/null; echo
+    echo; echo "== Devices";     nmcli -t -f DEVICE,TYPE,STATE dev 2>&1
+    echo; echo "== Radio";       nmcli radio 2>&1; rfkill list 2>&1
+    echo; echo "== Connections"; nmcli -t -f NAME,TYPE,DEVICE con show 2>&1
+    echo; echo "== Watchdog";    cat "$RUN/watchdog.json" 2>/dev/null; echo
+    echo; echo "== Log";         journalctl -b -u vinyl-wifi -u NetworkManager -u wpa_supplicant -n 120 --no-pager 2>&1
+    echo; echo "== Kernel Wi-Fi"; journalctl -b -k --no-pager 2>/dev/null | grep -iE "brcm|wlan|cfg80211" | tail -30
+  } >"$BOOT_LOG.tmp" 2>&1
+  mv -f "$BOOT_LOG.tmp" "$BOOT_LOG"
+}
 now() { date +%s; }
 
 status_json() { # status_json key value [key value ...] merges into watchdog.json
@@ -120,7 +138,7 @@ wait_online() { # wait_online seconds
 }
 
 watch() {
-  local down_since=0 kicked=0
+  local down_since=0 kicked=0 last_diag=0
   status_json started "$(now)" hotspot 0
   rm -f "$RUN/hotspot"
   rfkill unblock wifi 2>/dev/null; nmcli radio wifi on 2>/dev/null
@@ -141,7 +159,7 @@ watch() {
         fi
       fi
     elif online; then
-      if (( down_since )); then log "back online"; status_json last_fix "$(now)"; fi
+      if (( down_since )); then log "back online"; status_json last_fix "$(now)"; diag; fi
       down_since=0 kicked=0
     else
       (( down_since )) || down_since=$(now)
@@ -153,6 +171,10 @@ watch() {
         if (( gone >= KICK_AFTER && ! kicked )); then kick; kicked=1; fi
         if (( gone >= HOTSPOT_AFTER )); then start_hotspot; fi
       fi
+    fi
+    # While offline (or on the hotspot), refresh the report on the SD card once a minute.
+    if (( down_since || $(now) - last_diag > 3600 )) || hotspot_on; then
+      if (( $(now) - last_diag >= 60 )); then diag; last_diag=$(now); fi
     fi
     flock -u 9
   done
