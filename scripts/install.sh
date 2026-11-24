@@ -54,6 +54,11 @@ install -m 644 "$APP_DIR/config/dnsmasq-captive.conf" /etc/NetworkManager/dnsmas
 install -m 440 "$APP_DIR/config/sudoers" /etc/sudoers.d/vinyl-pi
 visudo -cf /etc/sudoers.d/vinyl-pi >/dev/null || { rm -f /etc/sudoers.d/vinyl-pi; echo "sudoers file invalid" >&2; exit 1; }
 
+# Wi-Fi template on the boot partition, so Wi-Fi can be set from any computer. Never overwrite a filled-in one.
+if [[ -d /boot/firmware && ! -e /boot/firmware/vinylpi-wifi.txt ]]; then
+  install -m 644 "$APP_DIR/config/vinylpi-wifi.txt" /boot/firmware/vinylpi-wifi.txt 2>/dev/null || true
+fi
+
 systemctl enable icecast2 avahi-daemon NetworkManager vinyl-stream vinyl-web vinyl-wifi vinyl-update.timer vinyl-firstboot >/dev/null 2>&1
 
 if [[ "$MODE" == image ]]; then

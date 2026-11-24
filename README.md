@@ -21,16 +21,15 @@ Turntable ──USB──▶ Raspberry Pi 3 ──Wi-Fi/LAN──▶ Browser on 
 ## Option A: flash the ready-made image (easiest)
 
 1. Download `vinylpi-*.img.xz` from the [latest release](https://github.com/tlowndes/vinylpi/releases/latest).
-2. In [Raspberry Pi Imager](https://www.raspberrypi.com/software/) choose **Device:** Raspberry Pi 3, **OS:** Use custom → that file, then your SD card.
-3. When Imager asks about OS customisation, choose **Edit settings** and set:
-   - **Hostname:** `vinyl` (keeps the address as `vinyl.local`)
-   - **Wireless LAN:** your network name and password, **country** `GB`
-   - Leave the rest as it is, then **Save** and **Yes**.
+2. In [Raspberry Pi Imager](https://www.raspberrypi.com/software/) choose **Device:** Raspberry Pi 3, **OS:** Use custom → that file, then your SD card. Skip any customisation.
+3. When it's done, take the card out and put it back in. Open the drive called **bootfs**, open `vinylpi-wifi.txt`, type your Wi-Fi name and password after the `=` signs, and save.
 4. Put the card in the Pi, plug in the turntable over USB, and power up. First boot takes a few minutes, then open **http://vinyl.local**.
+
+To change Wi-Fi later, edit the same file again. The Pi reads it on every start.
 
 > Or skip the hotspot: plug the Pi into your router with a network cable.
 
-**No Wi-Fi set up?** The Pi opens its own network after a minute or so (`VinylPi-Setup`, password `vinylpi-setup`). Join it on your phone; the setup page should pop up (if not, open `http://10.42.0.1`). Pick your home Wi-Fi.
+**No Wi-Fi set up?** The Pi opens its own network after a minute or so (`VinylPi-Setup`, password `vinylpi-setup`; if your phone doesn't ask for a password, that's fine too). Join it on your phone; the setup page should pop up (if not, open `http://10.42.0.1`). Pick your home Wi-Fi.
 
 **Can't reach it at all?** Power off, put the SD card in your computer, and open `vinylpi-wifi-log.txt` on the card. It's a Wi-Fi report the Pi refreshes every minute while it's offline.
 

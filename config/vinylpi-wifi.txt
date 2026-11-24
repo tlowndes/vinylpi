@@ -1,0 +1,7 @@
+# Vinyl Pi Wi-Fi
+# Type your home Wi-Fi name and password after the = signs, save, then put the card in the Pi.
+# The Pi reads this every time it starts. Change it any time the same way.
+
+WIFI_NAME=
+WIFI_PASSWORD=
+COUNTRY=GB
