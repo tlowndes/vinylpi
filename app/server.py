@@ -107,6 +107,19 @@ def static_files(name):
     return send_from_directory(STATIC, name)
 
 
+@app.get("/manifest.webmanifest")
+def manifest():
+    return send_from_directory(STATIC, "manifest.webmanifest", mimetype="application/manifest+json")
+
+
+@app.get("/sw.js")
+def service_worker():
+    # Served from the top level so it can look after the whole site (needed for "Add to home screen").
+    res = send_from_directory(STATIC, "sw.js", mimetype="text/javascript", max_age=0)
+    res.headers["Cache-Control"] = "no-cache"
+    return res
+
+
 @app.get("/vinylpi-ca.crt")
 def ca_cert():
     # The Pi's own certificate authority. Trust it once on a phone and https://vinyl.local works with no warning.

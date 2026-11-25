@@ -1,0 +1,23 @@
+/* Vinyl Pi service worker. It only exists so phones can add Vinyl Pi to the home screen as an app.
+   It never touches the music stream or the live data: those always go straight to the Pi.
+   The page itself is fetched fresh each time and only falls back to a saved copy if the Pi can't be reached. */
+const CACHE = "vinylpi-shell-v1";
+const SHELL = ["/", "/static/app.css", "/static/app.js", "/static/icon-192.png", "/static/icon-512.png"];
+
+self.addEventListener("install", (e) => {
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {}).then(() => self.skipWaiting()));
+});
+self.addEventListener("activate", (e) => {
+  e.waitUntil(caches.keys()
+    .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+    .then(() => self.clients.claim()));
+});
+self.addEventListener("fetch", (e) => {
+  const url = new URL(e.request.url);
+  if (e.request.method !== "GET" || url.origin !== location.origin || !SHELL.includes(url.pathname)) return;
+  e.respondWith(
+    fetch(e.request)
+      .then((res) => { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy)); return res; })
+      .catch(() => caches.match(e.request))
+  );
+});
