@@ -11,6 +11,7 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 import collection
 import cover
 import discogs
+import follow
 import musicbrainz as mb
 import recognise
 import stats
@@ -204,8 +205,40 @@ def flip():
         now["side"] = sides[(i + 1) % len(sides)]
         now["started_at"] = time.time()
         now.pop("heard", None)
+        now.pop("playing", None)
         _save_and_broadcast()
     return jsonify(now)
+
+
+# ---------- which track is playing ----------
+
+def _set_playing(record_id, number, since):
+    """Called by the follower when the track on the platter changes."""
+    with _lock:
+        now = state.get("now")
+        if not now or now.get("id") != record_id:
+            return
+        cur = now.get("playing") or {}
+        if cur.get("number") == number:
+            return
+        now["playing"] = {"number": number, "since": since}
+        _save_and_broadcast()
+
+
+tracker = follow.Tracker(f"http://127.0.0.1:8000/{system.env().get('MOUNT', 'vinyl')}", lambda: state.get("now"), _set_playing)
+
+
+@app.post("/api/track")
+def set_track():
+    """Tap a track to say it's the one playing. The follower carries on counting from there."""
+    now = state.get("now")
+    number = str((request.get_json(silent=True) or {}).get("number", ""))
+    if not now or not any(t["number"] == number for t in now.get("tracks", [])):
+        return {"error": "That track isn't on this record"}, 400
+    if not tracker.sync(now.get("id"), number):
+        # nothing to follow yet (stream off, or a side with no times): just remember it
+        _set_playing(now.get("id"), number, time.time())
+    return jsonify({"ok": True})
 
 
 @app.post("/api/clear")
@@ -530,6 +563,9 @@ def identify():
                 now["cover"] = art
             now["heard"] = song
             _save_and_broadcast()
+        rid, num = (now or {}).get("id"), song.get("number")
+    if rid and num:
+        tracker.sync(rid, num)  # outside the lock: the follower takes its own
     return jsonify({"found": True, "song": song})
 
 
@@ -605,6 +641,7 @@ def spa(_any):
 
 
 if __name__ == "__main__":
+    tracker.start()
     port = int(os.environ.get("PORT", "80"))
     try:
         from waitress import serve  # production server on the Pi
