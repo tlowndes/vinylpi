@@ -34,9 +34,10 @@
   function go(view) {
     if (status.mode === "hotspot") view = "wifi";
     $$(".view").forEach((v) => (v.hidden = v.dataset.view !== view));
+    if (view !== "scan") stopLive();
     if (view === "settings") loadStatus();
     if (view === "stats") loadStats();
-    if (view === "scan") setScanMode();
+    if (view === "scan") { setScanMode(); if (CAN_LIVE) startLive(); }
     if (view === "wifi") loadNetworks();
     if (view === "add") setTimeout(() => $("#add-q").focus(), 50);
     history.replaceState(null, "", view === "now" ? "/" : `#${view}`);
@@ -233,6 +234,42 @@
 
   /* ---------- scan ---------- */
   let scanMode = "barcode";
+
+  // Browsers only allow a live camera feed on secure (https or localhost) pages. vinyl.local is plain http,
+  // so there we open the phone's camera straight away instead, and read the barcode from the photo.
+  const CAN_LIVE = window.isSecureContext && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  let liveStream = null, liveTimer = null;
+  $("#scan-open").addEventListener("click", () => { if (!CAN_LIVE) { go("scan"); $("#photo").click(); } });
+  async function startLive() {
+    if (liveStream) return;
+    const video = $("#live-cam");
+    try {
+      liveStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } }, audio: false });
+    } catch { liveStream = null; return; }
+    video.srcObject = liveStream;
+    video.hidden = false;
+    $("#shot").hidden = true;
+    await video.play().catch(() => {});
+    const c = document.createElement("canvas");
+    let busy = false;
+    liveTimer = setInterval(async () => {
+      if (busy || scanMode !== "barcode" || !video.videoWidth) return;
+      busy = true;
+      try {
+        c.width = video.videoWidth; c.height = video.videoHeight;
+        c.getContext("2d").drawImage(video, 0, 0);
+        const code = await decode(c, true);
+        if (code) { $("#code").value = code; stopLive(true); await lookup(code); }
+      } catch { /* no barcode in this frame */ }
+      busy = false;
+    }, 600);
+  }
+  function stopLive(keepFrame) {
+    clearInterval(liveTimer); liveTimer = null;
+    if (liveStream) liveStream.getTracks().forEach((t) => t.stop());
+    liveStream = null;
+    if (!keepFrame) { $("#live-cam").srcObject = null; $("#live-cam").hidden = true; }
+  }
   $$(".tabs button").forEach((t) => t.addEventListener("click", () => {
     scanMode = t.dataset.mode;
     $$(".tabs button").forEach((b) => b.setAttribute("aria-selected", b === t));
@@ -331,13 +368,14 @@
     } catch (e) { say(msg, e.message, true); }
   }
 
-  async function decode(file) {
+  async function decode(file, quick = false) {
     const bitmap = await createImageBitmap(file);
     if ("BarcodeDetector" in window) {
       try {
         const found = await new BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e"] }).detect(bitmap);
         if (found.length) return found[0].rawValue;
       } catch { /* fall through to ZXing */ }
+      if (quick) return null;
     }
     if (!window.ZXing) {
       await new Promise((ok, fail) => {
@@ -356,6 +394,19 @@
     return res.getText();
   }
 
+  function showSides(tracks) {
+    const box = $("#match-tracks");
+    const sides = new Map();
+    tracks.forEach((t) => {
+      const s = /^[A-Z]/i.test(t.number) ? `SIDE ${t.number[0].toUpperCase()}` : "TRACKS";
+      if (!sides.has(s)) sides.set(s, []);
+      sides.get(s).push(t);
+    });
+    box.innerHTML = [...sides].map(([s, ts]) => `<section><div class="kicker accent">${esc(s)}</div><ol>${ts.map((t) =>
+      `<li><span class="n">${esc(t.number)}</span><span>${esc(t.title)}</span><span class="t">${esc(t.length)}</span></li>`).join("")}</ol></section>`).join("");
+    box.hidden = !tracks.length;
+  }
+
   async function lookup(code) {
     const msg = $("#scan-msg");
     say(msg, `Looking up ${code}…`);
@@ -365,9 +416,10 @@
       $("#match-art").src = match.cover;
       $("#match-title").textContent = match.title;
       $("#match-meta").textContent = [match.artist, match.year, match.label].filter(Boolean).join(" · ");
+      showSides(match.tracks || []);
       $("#spin-match").hidden = false;
       say(msg, "");
-    } catch (e) { match = null; $("#match").hidden = true; $("#spin-match").hidden = true; say(msg, e.message, true); }
+    } catch (e) { match = null; $("#match").hidden = true; $("#match-tracks").hidden = true; $("#spin-match").hidden = true; say(msg, e.message, true); }
   }
 
   $("#photo").addEventListener("change", async (e) => {

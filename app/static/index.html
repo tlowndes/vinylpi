@@ -82,7 +82,7 @@
       <input id="add-q" name="q" placeholder="Artist or album" autocomplete="off" enterkeyhint="search">
     </form>
     <div class="row">
-      <button class="pill grow" data-go="scan">Scan barcode</button>
+      <button class="pill grow" data-go="scan" id="scan-open">Scan barcode</button>
       <button class="pill grow" id="manual-open">Type it in</button>
     </div>
     <form class="manual card" id="manual" hidden>
@@ -97,6 +97,7 @@
   <!-- Scan -->
   <main class="view view-scan" data-view="scan" hidden>
     <div class="viewfinder" id="viewfinder">
+      <video id="live-cam" playsinline muted hidden></video>
       <img id="shot" alt="Your photo of the sleeve" hidden>
       <div class="frame" aria-hidden="true"></div>
       <p class="hint" id="scan-hint">Take a photo of the barcode on the back of the sleeve.</p>
@@ -113,6 +114,7 @@
         <img id="match-art" alt="">
         <div><div class="match-title" id="match-title"></div><div class="sub" id="match-meta"></div></div>
       </div>
+      <div class="match-tracks" id="match-tracks" hidden></div>
       <p class="msg" id="scan-msg" role="status"></p>
       <form class="row" id="q-form" hidden>
         <label class="sr" for="cover-q">Search for</label>

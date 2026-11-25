@@ -211,7 +211,8 @@ def barcode(code):
     if not d:
         return {"error": "No record with that barcode on MusicBrainz"}, 404
     return jsonify({"release": d["release"], "release_group": d["release_group"], "title": d["title"],
-                    "artist": d["artist"], "year": d["year"], "label": d["label"], "cover": d["cover_url"]})
+                    "artist": d["artist"], "year": d["year"], "label": d["label"], "cover": d["cover_url"],
+                    "tracks": d["tracks"]})
 
 
 @app.post("/api/cover")
