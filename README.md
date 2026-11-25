@@ -67,6 +67,12 @@ Two modes, set in **Settings → Cover scan**:
 - **Text only (free, default):** your phone reads the artist and title printed on the sleeve, then searches MusicBrainz. You can fix the words before searching.
 - **Claude:** paste an [Anthropic API key](https://console.anthropic.com/settings/keys) and Claude recognises the cover from the artwork, even with no text on it. About 1p a scan, billed to your Anthropic account. The key stays on the Pi.
 
+## What's this song?
+
+Tap **What's this?** on the Now playing screen. The Pi grabs about 9 seconds of the stream and asks [AudD](https://audd.io) to name it. The song shows under the album, and its track is marked in the tracklist (the side switches if you flipped without telling it). With nothing on the platter, it fills in the album too.
+
+It works a few times a day with no setup. For more, paste a free [AudD token](https://dashboard.audd.io/) into **Settings → Song recognition** (about 300 lookups, then roughly $2 per 1,000). Lookups only happen when you tap.
+
 ## Wi-Fi rescue
 
 A watchdog checks the connection every 20 seconds:
@@ -111,6 +117,7 @@ It records 10 seconds and reports the level. Aim for a `max_volume` around -1 to
 | Icecast | Serves the stream on port 8000 |
 | `app/` | Flask web app on port 80: player, now playing, stats, settings, live updates |
 | `app/cover.py` | Cover recognition with Claude (optional, needs an API key) |
+| `app/recognise.py` | "What's this?" song recognition with AudD |
 | `scripts/wifi.sh` | Wi-Fi watchdog and rescue hotspot |
 | `scripts/update.sh` | Pulls from GitHub, health-checks, rolls back on failure |
 | `scripts/vinyl-admin.sh` | The only thing the web app may run as root; checks every input |

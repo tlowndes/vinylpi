@@ -36,6 +36,13 @@
       <div class="kicker accent" id="side-line">NOTHING ON THE PLATTER</div>
       <h1 id="title">Drop the needle</h1>
       <p class="sub" id="artist">Then tell Vinyl Pi what's spinning.</p>
+      <div class="heard">
+        <button class="chip" id="identify">
+          <span class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          <span id="identify-label">What's this?</span>
+        </button>
+        <p class="heard-txt" id="heard" aria-live="polite"></p>
+      </div>
       <ol class="tracks" id="tracks"></ol>
 
       <div class="meter" id="meter" role="img" aria-label="Live input level"></div>
@@ -189,6 +196,19 @@
         <button class="pill">Save</button>
       </form>
       <button class="link" id="key-remove" hidden>Remove key</button>
+    </section>
+    <section class="card stack" id="song-card">
+      <div class="row between">
+        <span>Song recognition</span>
+        <span class="kicker dim" id="song-state">FREE TRIAL</span>
+      </div>
+      <p class="hint-text">Tap <b>What's this?</b> on the Now playing screen and AudD names the song from the stream. It works a few times a day without a token. Add a free AudD token for about 300 more, then it's roughly $2 per 1,000. <a href="https://dashboard.audd.io/" target="_blank" rel="noopener">Get a token</a></p>
+      <form class="row" id="audd-form">
+        <label class="sr" for="audd-token">AudD API token</label>
+        <input id="audd-token" type="password" class="field grow" placeholder="Paste your AudD token" autocomplete="off">
+        <button class="pill">Save</button>
+      </form>
+      <button class="link" id="audd-remove" hidden>Remove token</button>
     </section>
     <section class="card row between">
       <span>Auto-update nightly</span>

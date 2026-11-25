@@ -91,6 +91,7 @@
       $("#title").textContent = "Drop the needle";
       $("#artist").textContent = "Then tell Vinyl Pi what's spinning.";
       $("#tracks").innerHTML = "";
+      $("#heard").innerHTML = "";
       sleeve.style.backgroundImage = "";
       sleeve.classList.add("empty");
       setColours(null);
@@ -103,8 +104,14 @@
       sleeve.classList.toggle("empty", !n.cover);
       setColours(n.cover);
       const side = (n.tracks || []).filter((t) => !/^[A-Z]/i.test(t.number) || t.number[0].toUpperCase() === n.side);
+      const h = n.heard;
+      const heard = $("#heard");
+      if (h) {
+        heard.classList.remove("err");
+        heard.innerHTML = `<span class="kicker accent">♪ ${esc(ago(h.at).toUpperCase())}</span> <b>${esc(h.title)}</b> <span class="by">${esc(h.artist)}</span>`;
+      } else if (!heard.classList.contains("err")) heard.innerHTML = "";
       $("#tracks").innerHTML = side.slice(0, 8).map((t) =>
-        `<li><span class="n">${esc(t.number)}</span><span>${esc(t.title)}</span><span class="t">${esc(t.length)}</span></li>`).join("");
+        `<li${h && h.number === t.number ? ' class="on"' : ""}><span class="n">${esc(t.number)}</span><span>${esc(t.title)}</span><span class="t">${esc(t.length)}</span></li>`).join("");
       document.title = `${n.title} · Vinyl Pi`;
     }
     $("#history").innerHTML = (state.history || []).slice(0, 8).map((h) =>
@@ -114,6 +121,22 @@
   setInterval(render, 60000);
 
   $("#flip").addEventListener("click", () => api("/api/flip", { method: "POST" }).catch(() => {}));
+
+  /* ---------- what's this song? ---------- */
+  $("#identify").addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    if (btn.classList.contains("busy")) return;
+    btn.classList.add("busy");
+    $("#identify-label").textContent = "Listening…";
+    try {
+      const r = await api("/api/identify", { method: "POST" });
+      if (!r.found) say($("#heard"), r.message, true);
+    } catch (err) {
+      say($("#heard"), err.message, true);
+    }
+    btn.classList.remove("busy");
+    $("#identify-label").textContent = "What's this?";
+  });
 
   /* ---------- player + level meter ---------- */
   const meter = $("#meter");
@@ -405,6 +428,10 @@
     $("#key-remove").hidden = !status.cover_scan;
     $("#api-key").placeholder = status.cover_scan ? "Key saved. Paste a new one to replace it" : "sk-ant-…";
     $("#bitrate").value = status.bitrate;
+    $("#song-state").textContent = status.song_id ? "TOKEN SAVED" : "FREE TRIAL";
+    $("#song-state").classList.toggle("accent", !!status.song_id);
+    $("#audd-remove").hidden = !status.song_id;
+    $("#audd-token").placeholder = status.song_id ? "Token saved. Paste a new one to replace it" : "Paste your AudD token";
   }
   const smsg = $("#settings-msg");
   $("#update-check").addEventListener("click", async (e) => {
@@ -451,6 +478,17 @@
   }
   $("#key-form").addEventListener("submit", (e) => { e.preventDefault(); const k = $("#api-key").value.trim(); if (k) saveKey(k); });
   $("#key-remove").addEventListener("click", () => saveKey(""));
+  async function saveToken(token) {
+    say(smsg, token ? "Saving token…" : "Removing token…");
+    try {
+      const r = await api("/api/settings", { method: "POST", body: { audd_token: token } });
+      say(smsg, r.message || "Saved.");
+      $("#audd-token").value = "";
+      loadStatus();
+    } catch (err) { say(smsg, err.message, true); }
+  }
+  $("#audd-form").addEventListener("submit", (e) => { e.preventDefault(); const t = $("#audd-token").value.trim(); if (t) saveToken(t); });
+  $("#audd-remove").addEventListener("click", () => saveToken(""));
 
   $("#restart-stream").addEventListener("click", async () => {
     say(smsg, "Restarting the stream…");
