@@ -48,7 +48,7 @@
           <span class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
           <span id="identify-label">What's this?</span>
         </button>
-        <p class="heard-txt" id="heard" aria-live="polite"></p>
+        <div class="heard-txt" id="heard" aria-live="polite"></div>
       </div>
       <ol class="tracks" id="tracks"></ol>
 
@@ -157,13 +157,17 @@
       <img id="shot" alt="Your photo of the sleeve" hidden>
       <div class="frame" aria-hidden="true"></div>
       <p class="hint" id="scan-hint">Take a photo of the barcode on the back of the sleeve.</p>
+      <div class="ear" id="ear" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <p class="drop-hint" id="drop-hint">Or drop a photo anywhere on this page</p>
     </div>
     <header class="bar float">
       <button class="icon-btn glass" data-go="add" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <div class="tabs glass" role="tablist" aria-label="Scan mode">
         <button role="tab" aria-selected="true" data-mode="barcode">Barcode</button>
         <button role="tab" aria-selected="false" data-mode="cover">Cover</button>
+        <button role="tab" aria-selected="false" data-mode="listen">Listen</button>
       </div>
+      <button class="icon-btn glass" id="torch" aria-label="Torch" aria-pressed="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8l-1 6h-6zM9 9h6v4l-1 8h-4l-1-8z"/><path d="M12 13v2"/></svg></button>
     </header>
     <div class="sheet">
       <div class="match" id="match" hidden>
@@ -178,7 +182,8 @@
         <button class="pill">Search</button>
       </form>
       <div class="picks" id="picks"></div>
-      <label class="pill solid file">
+      <button class="pill solid" id="listen-go" hidden>Listen now</button>
+      <label class="pill solid file" id="photo-btn">
         <input type="file" id="photo" accept="image/*" capture="environment">
         <span id="photo-label">Take photo</span>
       </label>

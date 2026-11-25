@@ -56,6 +56,7 @@ The installer sets up Icecast, FFmpeg, the web app and the background services, 
 - **Stats:** the chart icon at the top of the player.
 - **Flip side:** moves the tracklist to the next side.
 - **Settings** (top-right icon): bitrate, restart stream, updates, Wi-Fi, and the Pi's temperature.
+- **Fixed address with a port:** `http://vinylpi.home.arpa:8880` shows the same page. The Pi tells your router its name is `vinylpi`, and most routers then answer `vinylpi.<your home domain>`. If yours uses a different domain (or doesn't list DHCP names), add a DNS entry for `vinylpi.home.arpa` pointing at the Pi's IP in the router or Pi-hole.
 - **VLC or other players:** the raw stream is `http://vinyl.local:8000/vinyl`.
 
 > On Android, `.local` names sometimes don't resolve. Use the Pi's IP address instead (your router's device list shows it).

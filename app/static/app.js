@@ -123,7 +123,24 @@
       const heard = $("#heard");
       if (h) {
         heard.classList.remove("err");
-        heard.innerHTML = `<span class="kicker accent">♪ ${esc(ago(h.at).toUpperCase())}</span> <b>${esc(h.title)}</b> <span class="by">${esc(h.artist)}</span>`;
+        const art = h.artwork || n.cover;
+        const where = h.number ? ` · ${esc(h.number)}` : "";
+        const off = h.on_record === false && (h.album || h.title);
+        heard.innerHTML = `<div class="heard-card${off ? " off" : ""}">
+          <div class="art"${art ? ` style="background-image:url('${esc(art)}')"` : ""}></div>
+          <div class="txt"><div class="kicker accent">♪ HEARD ${esc(ago(h.at).toUpperCase())}${where}</div>
+            <div class="t1">${esc(h.title)}</div><div class="t2">${esc(h.artist)}${h.album && off ? ` · ${esc(h.album)}` : ""}</div></div>
+          ${h.link ? `<a class="icon-btn" href="${esc(h.link)}" target="_blank" rel="noopener" aria-label="Open the song"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M17 14v5H5V7h5"/></svg></a>` : ""}
+        </div>${off ? `<div class="heard-off"><span>Not on ${esc(n.title)}.</span> <button class="link" id="heard-switch">Switch to ${esc(h.album || "that album")}</button></div>` : ""}`;
+        const sw = $("#heard-switch");
+        if (sw) sw.addEventListener("click", async () => {
+          sw.disabled = true; sw.textContent = "Finding it…";
+          try {
+            const rs = await api(`/api/search?q=${encodeURIComponent([h.artist, h.album || h.title].filter(Boolean).join(" "))}`);
+            if (!rs.length) throw new Error("Couldn't find that album. Try New record.");
+            await api("/api/now", { method: "POST", body: { release_group: rs[0].release_group } });
+          } catch (err) { say(heard, err.message, true); }
+        });
       } else if (!heard.classList.contains("err")) heard.innerHTML = "";
       // Every side is rendered; sides not on the platter are marked "other" (hidden on narrow screens).
       let last = null;
@@ -151,16 +168,29 @@
     const btn = e.currentTarget;
     if (btn.classList.contains("busy")) return;
     btn.classList.add("busy");
-    $("#identify-label").textContent = "Listening…";
+    const label = $("#identify-label");
+    const stop = listenCountdown((t) => { label.textContent = t; });
     try {
       const r = await api("/api/identify", { method: "POST" });
       if (!r.found) say($("#heard"), r.message, true);
     } catch (err) {
       say($("#heard"), err.message, true);
     }
+    stop();
     btn.classList.remove("busy");
-    $("#identify-label").textContent = "What's this?";
+    label.textContent = "What's this?";
   });
+  // The Pi listens for about 9 seconds, asks AudD, and takes a second listen if the first draws a blank.
+  function listenCountdown(show) {
+    const t0 = Date.now();
+    const step = () => {
+      const s = (Date.now() - t0) / 1000;
+      show(s < 9 ? `Listening… ${Math.ceil(9 - s)}` : s < 13 ? "Checking…" : s < 22 ? "Listening again…" : "Still checking…");
+    };
+    step();
+    const id = setInterval(step, 250);
+    return () => clearInterval(id);
+  }
 
   /* ---------- player + level meter ----------
      Phones get a plain <audio> element with no Web Audio in the way, so the browser treats it
@@ -357,6 +387,7 @@
 
   /* ---------- scan ---------- */
   let scanMode = "barcode";
+  const DESK = matchMedia("(min-width: 960px) and (pointer: fine)").matches;
 
   // Browsers only allow a live camera feed on secure (https or localhost) pages. vinyl.local is plain http,
   // so there we open the phone's camera straight away instead, and read the barcode from the photo.
@@ -370,6 +401,11 @@
       liveStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } }, audio: false });
     } catch { liveStream = null; return; }
     video.srcObject = liveStream;
+    // Torch for dim rooms and glossy sleeves, where the phone supports it.
+    const track = liveStream.getVideoTracks()[0];
+    const caps = track && track.getCapabilities ? track.getCapabilities() : {};
+    $("#torch").hidden = !caps.torch;
+    $("#torch").setAttribute("aria-pressed", "false");
     video.hidden = false;
     $("#shot").hidden = true;
     await video.play().catch(() => {});
@@ -393,13 +429,26 @@
         c.width = video.videoWidth * scale; c.height = video.videoHeight * scale;
         c.getContext("2d").drawImage(video, 0, 0, c.width, c.height);
         const code = await decode(c, native);
-        if (code) { $("#code").value = code; stopLive(true); await lookup(code); }
+        if (code) { gotIt(); $("#code").value = code; stopLive(true); await lookup(code); }
       } catch { /* no barcode in this frame */ }
       busy = false;
     }, 600);
   }
+  // A little buzz and a green frame when a barcode is read, like a shop scanner.
+  function gotIt() {
+    if (navigator.vibrate) navigator.vibrate(60);
+    const v = $("#viewfinder");
+    v.classList.add("got");
+    setTimeout(() => v.classList.remove("got"), 900);
+  }
+  $("#torch").addEventListener("click", async (e) => {
+    const b = e.currentTarget, on = b.getAttribute("aria-pressed") !== "true";
+    const track = liveStream && liveStream.getVideoTracks()[0];
+    try { await track.applyConstraints({ advanced: [{ torch: on }] }); b.setAttribute("aria-pressed", on); } catch { b.hidden = true; }
+  });
   function stopLive(keepFrame) {
     clearInterval(liveTimer); liveTimer = null;
+    $("#torch").hidden = true;
     if (liveStream) liveStream.getTracks().forEach((t) => t.stop());
     liveStream = null;
     if (!keepFrame) { $("#live-cam").srcObject = null; $("#live-cam").hidden = true; }
@@ -410,15 +459,27 @@
     setScanMode();
   }));
   function setScanMode() {
-    const cover = scanMode === "cover";
+    const cover = scanMode === "cover", listen = scanMode === "listen";
     $("#viewfinder").classList.toggle("cover", cover);
-    $("#code-form").hidden = cover;
+    $("#viewfinder").classList.toggle("listen", listen);
+    $("#code-form").hidden = scanMode !== "barcode";
+    $("#photo-btn").hidden = listen;
+    $("#listen-go").hidden = !listen;
+    $("#drop-hint").hidden = listen;
+    $("#shot").hidden = true;
+    $("#photo-label").textContent = DESK ? "Choose a photo" : "Take photo";
+    if (listen) stopLive();
+    else if (CAN_LIVE && $(".view-scan").hidden === false) startLive();
     $("#picks").innerHTML = "";
     $("#q-form").hidden = true;
     $("#match").hidden = true; $("#spin-match").hidden = true; match = null;
     say($("#scan-msg"), "");
+    if (listen) {
+      $("#scan-hint").textContent = "Drop the needle, then tap Listen now. The Pi hears the record and finds the album.";
+      return;
+    }
     $("#scan-hint").textContent = !cover
-      ? "Take a photo of the barcode on the back of the sleeve."
+      ? (liveStream ? "Point at the barcode on the back of the sleeve. It reads it by itself." : "Take a photo of the barcode on the back of the sleeve.")
       : status.cover_scan
         ? "Take a photo of the front cover. Fill the frame and avoid glare."
         : "Take a photo of the front cover, with the artist and title in shot.";
@@ -556,24 +617,59 @@
     } catch (e) { match = null; $("#match").hidden = true; $("#match-tracks").hidden = true; $("#spin-match").hidden = true; say(msg, e.message, true); }
   }
 
+  // Listen tab: the Pi names the song on the stream and puts its album on the platter.
+  $("#listen-go").addEventListener("click", async (e) => {
+    const btn = e.currentTarget, msg = $("#scan-msg");
+    if (btn.disabled) return;
+    btn.disabled = true;
+    $("#viewfinder").classList.add("hearing");
+    const stop = listenCountdown((t) => { btn.textContent = t; });
+    say(msg, "");
+    try {
+      const r = await api("/api/identify?switch=1", { method: "POST" });
+      if (!r.found) say(msg, r.message, true);
+      else { say(msg, ""); go("now"); }
+    } catch (err) { say(msg, err.message, true); }
+    stop();
+    btn.disabled = false; btn.textContent = "Listen now";
+    $("#viewfinder").classList.remove("hearing");
+  });
+
   $("#photo").addEventListener("change", async (e) => {
     const file = e.target.files[0];
-    if (!file) return;
+    e.target.value = "";
+    if (file) await usePhoto(file);
+  });
+  // On a computer there's rarely a camera: drop a photo of the sleeve onto the page instead.
+  const scanView = $(".view-scan");
+  ["dragenter", "dragover"].forEach((ev) => scanView.addEventListener(ev, (e) => {
+    if (scanMode === "listen") return;
+    e.preventDefault(); scanView.classList.add("dragging");
+  }));
+  ["dragleave", "drop"].forEach((ev) => scanView.addEventListener(ev, (e) => {
+    e.preventDefault(); if (ev === "drop" || e.target === scanView) scanView.classList.remove("dragging");
+  }));
+  scanView.addEventListener("drop", (e) => {
+    const file = [...(e.dataTransfer.files || [])].find((f) => f.type.startsWith("image/"));
+    if (file && scanMode !== "listen") usePhoto(file);
+  });
+  async function usePhoto(file) {
+    stopLive();
     const shot = $("#shot");
     shot.src = URL.createObjectURL(file);
     shot.hidden = false;
     $("#photo-label").textContent = "Retake";
-    if (scanMode === "cover") { await scanCover(file); e.target.value = ""; return; }
+    if (scanMode === "cover") return scanCover(file);
     say($("#scan-msg"), "Reading the barcode…");
     try {
       const code = await decode(file);
+      gotIt();
       $("#code").value = code;
       await lookup(code);
     } catch {
       say($("#scan-msg"), "Couldn't read a barcode. Try closer, with less glare, or type the number.", true);
     }
-    e.target.value = "";
-  });
+  }
   $("#code-form").addEventListener("submit", (e) => { e.preventDefault(); const v = $("#code").value.trim(); if (v) lookup(v); });
   $("#spin-match").addEventListener("click", () => match && spin(match.release ? { release: match.release } : { discogs: match.discogs }, $("#scan-msg")));
 
