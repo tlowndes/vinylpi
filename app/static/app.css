@@ -246,8 +246,14 @@ select { height: 44px; padding: 0 14px; }
 @media (min-width: 960px) { .view-stats { max-width: 760px !important; } }
 .hint-text { margin: 0; color: var(--mute); font-size: 14px; line-height: 1.45; }
 .hint-text a { color: var(--accent); }
-#cover-card .link, #song-card .link { align-self: flex-start; }
+#cover-card .link, #song-card .link, #secure-tip { align-self: flex-start; }
+.steps { border-top: 1px solid var(--line); padding-top: 10px; }
+.steps summary { cursor: pointer; font-weight: 600; font-size: 15px; }
+.steps ol { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; color: var(--mute); font-size: 14px; line-height: 1.45; }
+.steps b { color: var(--text); font-weight: 600; }
+#secure-card .row { flex-wrap: wrap; }
 .viewfinder.cover .frame { left: 10%; right: 10%; top: 16%; height: auto; aspect-ratio: 1; }
 .viewfinder.cover .hint { top: auto; bottom: 46%; }
 
 .report { margin: 0; max-height: 50vh; overflow: auto; font: 11px/1.5 var(--mono); color: var(--mute); white-space: pre-wrap; word-break: break-word; user-select: text; }
+#secure-card a.pill:not(.solid) { color: var(--text); }

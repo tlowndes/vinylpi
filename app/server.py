@@ -103,6 +103,16 @@ def static_files(name):
     return send_from_directory(STATIC, name)
 
 
+@app.get("/vinylpi-ca.crt")
+def ca_cert():
+    # The Pi's own certificate authority. Trust it once on a phone and https://vinyl.local works with no warning.
+    path = os.path.join(system.TLS_DIR, "ca.crt")
+    if not os.path.exists(path):
+        return {"error": "The secure page isn't set up yet. Run an update from Settings."}, 404
+    return send_from_directory(system.TLS_DIR, "ca.crt", mimetype="application/x-x509-ca-cert",
+                               as_attachment=True, download_name="vinylpi-ca.crt", max_age=0)
+
+
 @app.get("/covers/<path:name>")
 def covers(name):
     return send_from_directory(COVERS, name, max_age=86400 * 30)

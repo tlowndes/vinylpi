@@ -4,7 +4,9 @@
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const app = $("#app");
   const audio = $("#audio");
-  const STREAM = `${location.protocol}//${location.hostname}:8000/vinyl`;
+  const SECURE = location.protocol === "https:";
+  // On the secure page the stream comes through the same address (nginx), or the browser would block it.
+  const STREAM = SECURE ? `${location.origin}/vinyl` : `http://${location.hostname}:8000/vinyl`;
   let state = { now: null, history: [] };
   let status = {};
   let match = null;
@@ -37,7 +39,7 @@
     if (view !== "scan") stopLive();
     if (view === "settings") loadStatus();
     if (view === "stats") loadStats();
-    if (view === "scan") { setScanMode(); if (CAN_LIVE) startLive(); }
+    if (view === "scan") { setScanMode(); if (CAN_LIVE) startLive(); $("#secure-tip").hidden = CAN_LIVE; }
     if (view === "wifi") loadNetworks();
     if (view === "add") setTimeout(() => $("#add-q").focus(), 50);
     history.replaceState(null, "", view === "now" ? "/" : `#${view}`);
@@ -480,6 +482,10 @@
     $("#key-remove").hidden = !status.cover_scan;
     $("#api-key").placeholder = status.cover_scan ? "Key saved. Paste a new one to replace it" : "sk-ant-…";
     $("#bitrate").value = status.bitrate;
+    $("#secure-state").textContent = SECURE ? "IN USE" : status.https ? "READY" : "NOT SET UP";
+    $("#secure-state").classList.toggle("accent", SECURE);
+    $("#secure-open").href = `https://${location.hostname}/`;
+    $("#secure-open").hidden = SECURE;
     $("#song-state").textContent = status.song_id ? "TOKEN SAVED" : "FREE TRIAL";
     $("#song-state").classList.toggle("accent", !!status.song_id);
     $("#audd-remove").hidden = !status.song_id;
@@ -663,5 +669,18 @@
     if (status.mode === "hotspot") go("wifi");
     else if (VIEWS.includes(start) && start !== "now") go(start);
     connect();
+    upgrade();
   })();
+
+  // If this phone already trusts the Pi's certificate, hop to the secure page quietly.
+  // A no-cors fetch only succeeds when the certificate is trusted.
+  async function upgrade() {
+    if (SECURE || !status.https || status.mode === "hotspot" || app.classList.contains("playing")) return;
+    try {
+      const ctl = new AbortController();
+      setTimeout(() => ctl.abort(), 3000);
+      await fetch(`https://${location.hostname}/api/health`, { mode: "no-cors", signal: ctl.signal });
+      location.replace(`https://${location.hostname}${location.pathname}${location.hash}`);
+    } catch { /* not trusted yet: stay on http */ }
+  }
 })();

@@ -8,6 +8,7 @@ APP_DIR = os.environ.get("VINYL_APP_DIR", "/opt/vinyl-pi")
 DATA_DIR = os.environ.get("VINYL_DATA_DIR", "/var/lib/vinyl-pi")
 RUN_DIR = os.environ.get("VINYL_RUN_DIR", "/run/vinyl-pi")
 ENV_FILE = os.environ.get("VINYL_ENV", "/etc/vinyl-pi/vinyl.env")
+TLS_DIR = os.environ.get("VINYL_TLS_DIR", "/etc/vinyl-pi/tls")
 ADMIN = os.path.join(APP_DIR, "scripts", "vinyl-admin.sh")
 ICECAST = os.environ.get("ICECAST_STATUS", "http://127.0.0.1:8000/status-json.xsl")
 
@@ -101,6 +102,7 @@ def status():
         "auto_update": e.get("AUTO_UPDATE", "1") == "1",
         "cover_scan": bool(e.get("ANTHROPIC_API_KEY")),
         "song_id": bool(e.get("AUDD_API_TOKEN")),
+        "https": os.path.exists(os.path.join(TLS_DIR, "ca.crt")),
         "update": _read_json(os.path.join(DATA_DIR, "update.json"), {}),
         "watchdog": _read_json(os.path.join(RUN_DIR, "watchdog.json"), {}),
     }

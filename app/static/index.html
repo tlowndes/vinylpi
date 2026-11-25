@@ -132,6 +132,7 @@
         <button class="pill">Look up</button>
       </form>
       <button class="pill solid" id="spin-match" hidden>Spin it</button>
+      <button class="link" id="secure-tip" data-go="settings" hidden>Want a live camera? Set up the secure page</button>
     </div>
   </main>
 
@@ -198,6 +199,33 @@
         <button class="pill">Save</button>
       </form>
       <button class="link" id="key-remove" hidden>Remove key</button>
+    </section>
+    <section class="card stack" id="secure-card">
+      <div class="row between">
+        <span>Secure page</span>
+        <span class="kicker dim" id="secure-state">OFF</span>
+      </div>
+      <p class="hint-text">Phones only allow the live camera scanner on a secure (https) page. Trust Vinyl Pi's certificate once on each phone, then use the secure address.</p>
+      <details class="steps">
+        <summary>iPhone or iPad</summary>
+        <ol>
+          <li>In Safari, tap <b>Download certificate</b> below, then <b>Allow</b>.</li>
+          <li>Open <b>Settings</b>, tap <b>Profile Downloaded</b>, then <b>Install</b>.</li>
+          <li>Go to <b>Settings → General → About → Certificate Trust Settings</b> and turn on <b>Vinyl Pi</b>.</li>
+        </ol>
+      </details>
+      <details class="steps">
+        <summary>Android</summary>
+        <ol>
+          <li>Tap <b>Download certificate</b> below.</li>
+          <li>Open <b>Settings</b> and search for <b>CA certificate</b>. Tap it, then <b>Install anyway</b> and pick <b>vinylpi-ca.crt</b>.</li>
+          <li>No luck? Just open the secure page, tap <b>Advanced</b>, then <b>Proceed</b>. Chrome remembers it.</li>
+        </ol>
+      </details>
+      <div class="row">
+        <a class="pill" id="ca-download" href="/vinylpi-ca.crt" download>Download certificate</a>
+        <a class="pill solid" id="secure-open" href="#">Open secure page</a>
+      </div>
     </section>
     <section class="card stack" id="song-card">
       <div class="row between">

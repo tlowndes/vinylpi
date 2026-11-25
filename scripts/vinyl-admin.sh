@@ -68,7 +68,7 @@ case "${1:-}" in
       echo "System: $(sed -n "s/^PRETTY_NAME=//p" /etc/os-release | tr -d "\""), kernel $(uname -r), $(tr -d '\0' 2>/dev/null </proc/device-tree/model)"
       echo
       echo "== Services"
-      for u in icecast2 vinyl-stream vinyl-web vinyl-wifi vinyl-firstboot; do
+      for u in icecast2 nginx vinyl-stream vinyl-web vinyl-wifi vinyl-firstboot; do
         printf '%-16s %s\n' "$u" "$(systemctl is-active "$u" 2>&1)"
       done
       echo "icecast2 unit: $(systemctl show -p FragmentPath,SourcePath --value icecast2 2>/dev/null | tr '\n' ' ')"

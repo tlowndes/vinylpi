@@ -73,6 +73,10 @@ Tap **What's this?** on the Now playing screen. The Pi grabs about 9 seconds of 
 
 It works a few times a day with no setup. For more, paste a free [AudD token](https://dashboard.audd.io/) into **Settings → Song recognition** (about 300 lookups, then roughly $2 per 1,000). Lookups only happen when you tap.
 
+## Secure page (https)
+
+Phones only allow a live camera feed on secure pages, so Vinyl Pi also serves **https://vinyl.local** (nginx in front of the web app and the stream). The Pi makes its own certificate, so each phone trusts it once: **Settings → Secure page** has the download and the steps for iPhone and Android. After that, opening http://vinyl.local hops to the secure page by itself, and the barcode scanner shows a live camera.
+
 ## Wi-Fi rescue
 
 A watchdog checks the connection every 20 seconds:
@@ -117,6 +121,7 @@ It records 10 seconds and reports the level. Aim for a `max_volume` around -1 to
 | Icecast | Serves the stream on port 8000 |
 | `app/` | Flask web app on port 80: player, now playing, stats, settings, live updates |
 | `app/cover.py` | Cover recognition with Claude (optional, needs an API key) |
+| `scripts/https.sh` | Makes the Pi's certificate and the nginx site for https |
 | `app/recognise.py` | "What's this?" song recognition with AudD |
 | `scripts/wifi.sh` | Wi-Fi watchdog and rescue hotspot |
 | `scripts/update.sh` | Pulls from GitHub, health-checks, rolls back on failure |
