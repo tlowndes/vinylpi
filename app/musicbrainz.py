@@ -59,6 +59,29 @@ def by_barcode(code):
     return details(release_id=rels[0]["id"]) if rels else None
 
 
+def _sort_name(credit):
+    """How a record shop files the artist: "Bowie, David", "Beatles, The"."""
+    if credit and len(credit) == 1:
+        return (credit[0].get("artist") or {}).get("sort-name") or ""
+    return ""
+
+
+def _discogs_id(relations):
+    for rel in relations or []:
+        url = (rel.get("url") or {}).get("resource", "")
+        if rel.get("type") == "discogs" and "/release/" in url:
+            tail = url.rstrip("/").rsplit("/", 1)[-1].split("-")[0]
+            if tail.isdigit():
+                return int(tail)
+    return None
+
+
+def genres(release_group):
+    """Album-level genres (fuller than a single pressing's)."""
+    rg = _get(f"release-group/{release_group}", {"inc": "genres"})
+    return [g["name"] for g in sorted(rg.get("genres") or [], key=lambda g: -g.get("count", 0))][:3]
+
+
 def _pick_release(rg_id):
     """Prefer a vinyl pressing so track numbers come out as A1, B2..."""
     data = _get("release", {"release-group": rg_id, "inc": "media", "limit": 25})
@@ -76,7 +99,7 @@ def details(release_group=None, release_id=None):
         release_id = _pick_release(release_group)
         if not release_id:
             return None
-    r = _get(f"release/{release_id}", {"inc": "recordings labels release-groups artist-credits"})
+    r = _get(f"release/{release_id}", {"inc": "recordings labels release-groups artist-credits genres url-rels"})
     rg = r.get("release-group", {})
     tracks = []
     for m in r.get("media", []):
@@ -96,6 +119,10 @@ def details(release_group=None, release_id=None):
         "year": (rg.get("first-release-date") or r.get("date") or "")[:4],
         "label": labels[0] if labels else "",
         "tracks": tracks,
+        "sort_artist": _sort_name(r.get("artist-credit")),
+        "genres": [g["name"] for g in sorted(r.get("genres") or [], key=lambda g: -g.get("count", 0))][:3],
+        "barcode": r.get("barcode") or "",
+        "discogs_id": _discogs_id(r.get("relations")),
         "cover_url": f"{CAA}/release/{release_id}/front-500",
         "cover_fallback": f"{CAA}/release-group/{rg.get('id')}/front-500" if rg.get("id") else None,
     }

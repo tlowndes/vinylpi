@@ -39,13 +39,21 @@
     if (view !== "scan") stopLive();
     if (view === "settings") loadStatus();
     if (view === "stats") loadStats();
+    if (view === "shelf") loadShelf();
+    if (view === "now") addTarget = "spin";
+    if (view === "add") {
+      $("#add-kicker").textContent = addTarget === "shelf" ? "ADD TO YOUR SHELF" : "SEARCH · MUSICBRAINZ";
+      $("#add-title").textContent = addTarget === "shelf" ? "Add a record" : "New record";
+      $("#spin-match").textContent = addTarget === "shelf" ? "Add to shelf" : "Spin it";
+    }
     if (view === "scan") { setScanMode(); if (CAN_LIVE) startLive(); $("#secure-tip").hidden = CAN_LIVE; }
     if (view === "wifi") loadNetworks();
     if (view === "add") setTimeout(() => $("#add-q").focus(), 50);
     history.replaceState(null, "", view === "now" ? "/" : `#${view}`);
     window.scrollTo(0, 0);
   }
-  const VIEWS = ["now", "add", "scan", "settings", "wifi", "stats"];
+  const VIEWS = ["now", "add", "scan", "settings", "wifi", "stats", "shelf"];
+  let addTarget = "spin"; // "shelf" when adding from the shelf: pick a record without playing it
   window.addEventListener("hashchange", () => { const v = location.hash.slice(1) || "now"; if (VIEWS.includes(v)) go(v); });
   document.addEventListener("click", (e) => {
     const b = e.target.closest("[data-go]");
@@ -221,6 +229,16 @@
   $("#add-q").addEventListener("input", (e) => { clearTimeout(searchTimer); searchTimer = setTimeout(() => search(e.target.value), 450); });
 
   async function spin(body, msg) {
+    if (addTarget === "shelf" && !body.collection_id) {
+      say(msg, "Adding to your shelf…");
+      try {
+        const r = await api("/api/collection", { method: "POST", body });
+        say(msg, "");
+        go("shelf");
+        say($("#shelf-msg"), `Added ${r.title}.`);
+      } catch (e) { say(msg, e.message, true); }
+      return;
+    }
     say(msg, "Fetching the details…");
     try {
       await api("/api/now", { method: "POST", body });
@@ -272,9 +290,9 @@
     liveStream = null;
     if (!keepFrame) { $("#live-cam").srcObject = null; $("#live-cam").hidden = true; }
   }
-  $$(".tabs button").forEach((t) => t.addEventListener("click", () => {
+  $$(".view-scan .tabs button").forEach((t) => t.addEventListener("click", () => {
     scanMode = t.dataset.mode;
-    $$(".tabs button").forEach((b) => b.setAttribute("aria-selected", b === t));
+    $$(".view-scan .tabs button").forEach((b) => b.setAttribute("aria-selected", b === t));
     setScanMode();
   }));
   function setScanMode() {
@@ -445,6 +463,183 @@
   $("#code-form").addEventListener("submit", (e) => { e.preventDefault(); const v = $("#code").value.trim(); if (v) lookup(v); });
   $("#spin-match").addEventListener("click", () => match && spin({ release: match.release }, $("#scan-msg")));
 
+  /* ---------- shelf ---------- */
+  let shelfItems = [], shelfSetup = [{ name: "Shelf 1", capacity: 80 }], pulled = null;
+  const pref = (k, d) => { try { return localStorage.getItem(k) || d; } catch { return d; } };
+  const keep = (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } };
+  let shelfOrder = pref("shelf-order", "artist"), shelfLook = pref("shelf-look", "spines");
+  const hues = {};
+  try { Object.assign(hues, JSON.parse(localStorage.getItem("shelf-hues") || "{}")); } catch { /* fresh */ }
+
+  $("#shelf-add").addEventListener("click", () => { addTarget = "shelf"; go("add"); });
+  function tabsFor(id, attr, get, set) {
+    const btns = $$(`#${id} button`);
+    const sync = () => btns.forEach((b) => b.setAttribute("aria-selected", b.dataset[attr] === get()));
+    btns.forEach((b) => b.addEventListener("click", () => { set(b.dataset[attr]); sync(); drawShelf(); }));
+    sync();
+  }
+  tabsFor("shelf-order", "order", () => shelfOrder, (v) => { shelfOrder = v; keep("shelf-order", v); if (v === "colour") measureColours(); });
+  tabsFor("shelf-look", "look", () => shelfLook, (v) => { shelfLook = v; keep("shelf-look", v); });
+
+  async function loadShelf() {
+    try {
+      [shelfItems, shelfSetup] = await Promise.all([api("/api/collection"), api("/api/shelves")]);
+    } catch (e) { return say($("#shelf-msg"), e.message, true); }
+    drawShelf();
+    if (shelfOrder === "colour") measureColours();
+  }
+
+  const fold = (s) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const byArtist = (a, b) => fold(a.sort_artist || a.artist).localeCompare(fold(b.sort_artist || b.artist)) || (a.year || "9999").localeCompare(b.year || "9999") || fold(a.title).localeCompare(fold(b.title));
+  function colourKey(r) {
+    const h = hues[r.cover];
+    if (!h) return [3, 0, 0];
+    if (h.s < 18) return [2, -h.l, 0]; // black, greys and white sleeves go at the end, light to dark
+    return [1, (h.h + 15) % 360, -h.l]; // start the rainbow at red
+  }
+  function sorted() {
+    const list = [...shelfItems];
+    if (shelfOrder === "genre") list.sort((a, b) => a.section.localeCompare(b.section) || byArtist(a, b));
+    else if (shelfOrder === "year") list.sort((a, b) => (a.year || "9999").localeCompare(b.year || "9999") || byArtist(a, b));
+    else if (shelfOrder === "colour") list.sort((a, b) => { const x = colourKey(a), y = colourKey(b); return x[0] - y[0] || x[1] - y[1] || x[2] - y[2] || byArtist(a, b); });
+    else list.sort(byArtist);
+    return list;
+  }
+  function groupOf(r) {
+    if (shelfOrder === "genre") return r.section;
+    if (shelfOrder === "year") return r.year ? `${r.year.slice(0, 3)}0s` : "No year";
+    if (shelfOrder === "artist") { const c = fold(r.sort_artist || r.artist).replace(/^[^a-z0-9]+/, "")[0] || "#"; return /[0-9]/.test(c) ? "#" : c.toUpperCase(); }
+    return null;
+  }
+  // Fill shelves in order. Anything past the last shelf waits for more space.
+  function layout() {
+    const list = sorted(), shelves = shelfSetup.map((s) => ({ ...s, items: [] }));
+    let i = 0;
+    list.forEach((r, n) => {
+      while (i < shelves.length && shelves[i].items.length >= shelves[i].capacity) i++;
+      const where = i < shelves.length ? shelves[i] : null;
+      r.pos = n + 1;
+      r.shelf = where ? where.name : null;
+      r.slot = where ? where.items.length + 1 : null;
+      if (where) where.items.push(r);
+    });
+    const over = list.filter((r) => !r.shelf);
+    return { list, shelves, over };
+  }
+  function spineStyle(r) {
+    if (r.cover) return `background-image:url('${esc(r.cover)}')`;
+    let h = 0; for (const c of r.artist + r.title) h = (h * 31 + c.charCodeAt(0)) % 360;
+    return `background-color:hsl(${h} 30% 28%)`;
+  }
+  function drawShelf() {
+    const { list, shelves, over } = layout();
+    const n = list.length;
+    $("#shelf-count").textContent = n ? `${n} record${n === 1 ? "" : "s"}` : "Your records";
+    const room = shelves.reduce((a, s) => a + s.capacity, 0);
+    $("#shelf-sub").textContent = !n ? "Everything you play lands here. Tap + to add records you own."
+      : over.length ? `${over.length} won't fit yet. Add a shelf or raise the counts in shelf setup.`
+      : `${shelves.length} shelf${shelves.length === 1 ? "" : "s"}, ${room - n} spaces left.`;
+    const groups = [...shelves.filter((s) => s.items.length || shelves.length === 1), ...(over.length ? [{ name: "No room yet", capacity: 0, items: over, over: true }] : [])];
+    if (!n) { $("#shelves").innerHTML = ""; return; }
+    $("#shelves").innerHTML = groups.map((s) => {
+      const first = s.items[0], last = s.items[s.items.length - 1];
+      const range = first ? `${first.sort_artist || first.artist} → ${last.sort_artist || last.artist}` : "Empty";
+      const head = `<div class="shelf-head"><span class="kicker accent">${esc(s.name.toUpperCase())}${s.over ? "" : ` · ${s.items.length}/${s.capacity}`}</span><span class="kicker dim">${esc(shelfOrder === "colour" ? "" : range)}</span></div>`;
+      let prev = null, body = "";
+      if (shelfLook === "list") {
+        body = `<ol class="order">${s.items.map((r) => {
+          const g = groupOf(r), div = g && g !== prev ? `<li class="div">${esc(g)}</li>` : ""; prev = g;
+          return `${div}<li><button data-id="${r.id}"><span class="n">${r.pos}</span><span class="art" style="${spineStyle(r)}"></span><span class="tx"><b>${esc(r.artist)}</b> ${esc(r.title)}</span><span class="y">${esc(r.year)}</span></button></li>`;
+        }).join("")}</ol>`;
+      } else {
+        body = `<div class="plank">${s.items.map((r) => {
+          const g = groupOf(r), div = g && g !== prev ? `<span class="divider"><i>${esc(g)}</i></span>` : ""; prev = g;
+          return `${div}<button class="spine${pulled === r.id ? " out" : ""}" data-id="${r.id}" style="${spineStyle(r)}" aria-label="${esc(r.artist)}, ${esc(r.title)}"><span>${esc(r.artist)}<b>${esc(r.title)}</b></span></button>`;
+        }).join("")}</div>`;
+      }
+      return `<section class="shelf${s.over ? " over" : ""}">${head}${body}</section>`;
+    }).join("");
+    $$("#shelves [data-id]").forEach((b) => b.addEventListener("click", () => pull(b.dataset.id)));
+  }
+  function pull(id) {
+    const { list } = layout();
+    const i = list.findIndex((r) => r.id === id), r = list[i];
+    if (!r) return;
+    pulled = id;
+    $("#pull").hidden = false;
+    $("#pull-art").src = r.cover || "";
+    $("#pull-where").textContent = r.shelf ? `${r.shelf.toUpperCase()} · SLOT ${r.slot} · #${r.pos} OVERALL` : "NO ROOM YET";
+    $("#pull-title").textContent = r.title;
+    $("#pull-meta").textContent = [r.artist, r.year, r.section !== "Other" ? r.section : "", r.plays ? `played ${r.plays}×` : ""].filter(Boolean).join(" · ");
+    const before = list[i - 1], after = list[i + 1];
+    $("#pull-between").textContent = before && after ? `Goes after ${before.artist} – ${before.title}, before ${after.artist} – ${after.title}.`
+      : before ? `Goes at the end, after ${before.artist} – ${before.title}.` : after ? `Goes first, before ${after.artist} – ${after.title}.` : "Your first record. Lonely.";
+    drawShelf();
+  }
+  $("#pull-close").addEventListener("click", () => { pulled = null; $("#pull").hidden = true; drawShelf(); });
+  $("#pull-spin").addEventListener("click", () => pulled && spin({ collection_id: pulled }, $("#shelf-msg")));
+  $("#pull-remove").addEventListener("click", async () => {
+    if (!pulled) return;
+    const r = shelfItems.find((x) => x.id === pulled);
+    try { await api(`/api/collection/${pulled}`, { method: "DELETE" }); } catch (e) { return say($("#shelf-msg"), e.message, true); }
+    say($("#shelf-msg"), r ? `Took ${r.title} off the shelf.` : "");
+    pulled = null; $("#pull").hidden = true; loadShelf();
+  });
+
+  // Colour order: read each sleeve's main colour (covers are on the Pi, so the browser may read them).
+  async function measureColours() {
+    const todo = shelfItems.filter((r) => r.cover && !hues[r.cover]);
+    if (!todo.length) return;
+    say($("#shelf-msg"), "Reading sleeve colours…");
+    const c = document.createElement("canvas"); c.width = c.height = 24;
+    const g = c.getContext("2d", { willReadFrequently: true });
+    for (const r of todo) {
+      try {
+        const img = new Image(); img.src = r.cover; await img.decode();
+        g.drawImage(img, 0, 0, 24, 24);
+        const d = g.getImageData(0, 0, 24, 24).data;
+        let best = null; const bins = {};
+        for (let p = 0; p < d.length; p += 4) {
+          const [h, s, l] = rgbToHsl(d[p], d[p + 1], d[p + 2]);
+          const k = s < 18 ? "grey" : Math.round(h / 20);
+          const b = (bins[k] = bins[k] || { n: 0, h: 0, s: 0, l: 0 });
+          b.n += s < 18 ? 0.6 : 1 + s / 100; b.h += h; b.s += s; b.l += l; b.c = (b.c || 0) + 1;
+        }
+        for (const k in bins) if (!best || bins[k].n > best.n) best = bins[k];
+        hues[r.cover] = { h: best.h / best.c, s: best.s / best.c, l: best.l / best.c };
+      } catch { hues[r.cover] = { h: 0, s: 0, l: 50 }; }
+    }
+    keep("shelf-hues", JSON.stringify(hues));
+    say($("#shelf-msg"), "");
+    drawShelf();
+  }
+
+  // Shelf setup
+  function drawSetup() {
+    $("#shelf-rows").innerHTML = shelfSetup.map((s, i) => `<div class="row shelf-row">
+        <input class="field grow" data-k="name" data-i="${i}" value="${esc(s.name)}" aria-label="Shelf name">
+        <input class="field num" data-k="capacity" data-i="${i}" type="number" min="1" max="2000" inputmode="numeric" value="${s.capacity}" aria-label="Records that fit">
+        ${shelfSetup.length > 1 ? `<button class="icon-btn" data-del="${i}" aria-label="Remove shelf"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>` : ""}
+      </div>`).join("");
+    $$("#shelf-rows input").forEach((el) => el.addEventListener("input", () => {
+      const s = shelfSetup[el.dataset.i];
+      s[el.dataset.k] = el.dataset.k === "capacity" ? Math.max(1, parseInt(el.value, 10) || 1) : el.value;
+    }));
+    $$("#shelf-rows [data-del]").forEach((b) => b.addEventListener("click", () => { shelfSetup.splice(+b.dataset.del, 1); drawSetup(); }));
+  }
+  $("#shelf-setup-open").addEventListener("click", () => { const c = $("#shelf-setup"); c.hidden = !c.hidden; if (!c.hidden) drawSetup(); });
+  $("#shelf-row-add").addEventListener("click", () => {
+    const last = shelfSetup[shelfSetup.length - 1];
+    shelfSetup.push({ name: `Shelf ${shelfSetup.length + 1}`, capacity: last ? last.capacity : 80 });
+    drawSetup();
+  });
+  $("#shelf-save").addEventListener("click", async () => {
+    try { shelfSetup = await api("/api/shelves", { method: "POST", body: shelfSetup }); } catch (e) { return say($("#shelf-msg"), e.message, true); }
+    $("#shelf-setup").hidden = true;
+    say($("#shelf-msg"), "Shelves saved.");
+    drawShelf();
+  });
+
   /* ---------- settings ---------- */
   async function loadStatus() {
     try { status = await api("/api/status"); } catch { return; }
@@ -486,6 +681,11 @@
     $("#secure-state").classList.toggle("accent", SECURE);
     $("#secure-open").href = `https://${location.hostname}/`;
     $("#secure-open").hidden = SECURE;
+    $("#discogs-state").textContent = status.discogs ? "LINKED" : "NOT LINKED";
+    $("#discogs-state").classList.toggle("accent", !!status.discogs);
+    $("#discogs-actions").hidden = $("#discogs-remove").hidden = !status.discogs;
+    $("#discogs-token").placeholder = status.discogs ? "Token saved. Paste a new one to replace it" : "Paste your Discogs token";
+    if (status.discogs) checkImport();
     $("#song-state").textContent = status.song_id ? "TOKEN SAVED" : "FREE TRIAL";
     $("#song-state").classList.toggle("accent", !!status.song_id);
     $("#audd-remove").hidden = !status.song_id;
@@ -547,6 +747,38 @@
   }
   $("#audd-form").addEventListener("submit", (e) => { e.preventDefault(); const t = $("#audd-token").value.trim(); if (t) saveToken(t); });
   $("#audd-remove").addEventListener("click", () => saveToken(""));
+
+  async function saveDiscogs(token) {
+    const m = $("#discogs-msg");
+    say(m, token ? "Checking the token…" : "Unlinking…");
+    try {
+      const r = await api("/api/settings", { method: "POST", body: { discogs_token: token } });
+      $("#discogs-token").value = "";
+      await loadStatus();
+      if (token) {
+        const d = await api("/api/discogs?check=1");
+        say(m, d.username ? `Linked to ${d.username}.` : "Saved, but Discogs didn't recognise the token. Check it and paste it again.", !d.username);
+      } else say(m, r.message || "Unlinked.");
+    } catch (err) { say(m, err.message, true); }
+  }
+  $("#discogs-form").addEventListener("submit", (e) => { e.preventDefault(); const t = $("#discogs-token").value.trim(); if (t) saveDiscogs(t); });
+  $("#discogs-remove").addEventListener("click", () => saveDiscogs(""));
+  let importTimer;
+  function showImport(i) {
+    const m = $("#discogs-msg"), b = $("#discogs-import");
+    const busy = i.state === "reading" || i.state === "adding";
+    b.disabled = busy;
+    if (i.state === "reading") say(m, "Reading your Discogs collection…");
+    else if (i.state === "adding") say(m, `Adding to your shelf: ${i.done} of ${i.total}…`);
+    else if (i.state === "done") say(m, `Imported from ${i.user}: ${i.added} new record${i.added === 1 ? "" : "s"} on your shelf.`);
+    else if (i.state === "failed") say(m, i.error, true);
+    clearTimeout(importTimer);
+    if (busy) importTimer = setTimeout(checkImport, 2000);
+  }
+  async function checkImport() { try { showImport((await api("/api/discogs")).import); } catch { /* try later */ } }
+  $("#discogs-import").addEventListener("click", async () => {
+    try { showImport(await api("/api/discogs/import", { method: "POST" })); } catch (err) { say($("#discogs-msg"), err.message, true); }
+  });
 
   $("#restart-stream").addEventListener("click", async () => {
     say(smsg, "Restarting the stream…");
