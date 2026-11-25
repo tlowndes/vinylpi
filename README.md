@@ -73,6 +73,16 @@ Tap **What's this?** on the Now playing screen. The Pi grabs about 9 seconds of 
 
 It works a few times a day with no setup. For more, paste a free [AudD token](https://dashboard.audd.io/) into **Settings → Song recognition** (about 300 lookups, then roughly $2 per 1,000). Lookups only happen when you tap.
 
+## Your shelf
+
+Tap the shelf icon on Now playing. Every record you play lands on the shelf, and **+** adds records you own without playing them (search or barcode).
+
+- **Order:** Artist (filed by surname, "Beatles, The"), Genre, Colour (a rainbow of sleeves) or Year. Switch any time and the shelf rearranges.
+- **Order list:** a numbered list to follow when you reshelve.
+- **Shelves:** the sliders icon sets how many shelves you have and how many records fit on each. Records fill them in order; anything that doesn't fit shows under "No room yet".
+- **Tap a spine** to see where it lives (shelf, slot, and what it sits between) or to spin it.
+- **Discogs:** paste a [personal token](https://www.discogs.com/settings/developers) in **Settings → Discogs** and records you add go into your Discogs collection too. You can also import your Discogs collection onto the shelf.
+
 ## Secure page (https)
 
 Phones only allow a live camera feed on secure pages, so Vinyl Pi also serves **https://vinyl.local** (nginx in front of the web app and the stream). The Pi makes its own certificate, so each phone trusts it once: **Settings → Secure page** has the download and the steps for iPhone and Android. After that, opening http://vinyl.local hops to the secure page by itself, and the barcode scanner shows a live camera.
@@ -122,6 +132,8 @@ It records 10 seconds and reports the level. Aim for a `max_volume` around -1 to
 | `app/` | Flask web app on port 80: player, now playing, stats, settings, live updates |
 | `app/cover.py` | Cover recognition with Claude (optional, needs an API key) |
 | `scripts/https.sh` | Makes the Pi's certificate and the nginx site for https |
+| `app/collection.py` | Your shelf: records you own, how they're filed |
+| `app/discogs.py` | Discogs sync (optional, needs a token) |
 | `app/recognise.py` | "What's this?" song recognition with AudD |
 | `scripts/wifi.sh` | Wi-Fi watchdog and rescue hotspot |
 | `scripts/update.sh` | Pulls from GitHub, health-checks, rolls back on failure |

@@ -19,7 +19,8 @@
      <div class="top">
       <header class="bar">
         <span class="kicker live" id="live">● CONNECTING</span>
-        <button class="icon-btn push" data-go="stats" aria-label="Listening stats">
+        <button class="icon-btn push" data-go="shelf" aria-label="Your shelf"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18M5 20V6M9 20V4M13 20V7M16.5 20l2.5-13"/></svg></button>
+        <button class="icon-btn" data-go="stats" aria-label="Listening stats">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M12 20V4M19 20v-6"/></svg>
         </button>
         <button class="icon-btn" data-go="settings" aria-label="Settings">
@@ -64,18 +65,67 @@
         <label class="kicker" for="side-q">FIND A RECORD</label>
         <input id="side-q" name="q" placeholder="Artist or album" autocomplete="off">
       </form>
-      <div class="row between"><span class="kicker dim">EARLIER</span><button class="link" data-go="stats">Your stats</button></div>
+      <div class="row between"><span class="kicker dim">EARLIER</span><span class="row"><button class="link" data-go="shelf">Your shelf</button><button class="link" data-go="stats">Your stats</button></span></div>
       <ul class="history" id="history"></ul>
     </aside>
+  </main>
+
+  <!-- Shelf -->
+  <main class="view view-shelf" data-view="shelf" hidden>
+    <header class="bar">
+      <button class="icon-btn" data-go="now" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <span class="kicker dim">YOUR SHELF</span>
+      <button class="icon-btn push" id="shelf-setup-open" aria-label="Set up shelves"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
+      <button class="icon-btn" id="shelf-add" aria-label="Add a record"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+    </header>
+    <div>
+      <h1 id="shelf-count">Your records</h1>
+      <p class="sub" id="shelf-sub">Everything you play lands here.</p>
+    </div>
+    <section class="card stack" id="shelf-setup" hidden>
+      <div class="row between"><span>Shelves</span><span class="kicker dim">RECORDS EACH</span></div>
+      <p class="hint-text">Count roughly how many records fit on each shelf. Records fill them in order, so adding one shuffles the rest along.</p>
+      <div class="stack" id="shelf-rows"></div>
+      <div class="row">
+        <button class="pill" id="shelf-row-add">Add a shelf</button>
+        <button class="pill solid" id="shelf-save">Save</button>
+      </div>
+    </section>
+    <div class="shelf-tools">
+      <div class="tabs seg" role="tablist" aria-label="Shelf order" id="shelf-order">
+        <button role="tab" aria-selected="true" data-order="artist">Artist</button>
+        <button role="tab" aria-selected="false" data-order="genre">Genre</button>
+        <button role="tab" aria-selected="false" data-order="colour">Colour</button>
+        <button role="tab" aria-selected="false" data-order="year">Year</button>
+      </div>
+      <div class="tabs seg" role="tablist" aria-label="Look" id="shelf-look">
+        <button role="tab" aria-selected="true" data-look="spines">Shelf</button>
+        <button role="tab" aria-selected="false" data-look="list">Order list</button>
+      </div>
+    </div>
+    <p class="msg" id="shelf-msg" role="status"></p>
+    <div id="shelves"></div>
+    <div class="sheet pull" id="pull" hidden>
+      <div class="match">
+        <img id="pull-art" alt="">
+        <div><div class="kicker accent" id="pull-where"></div><div class="match-title" id="pull-title"></div><div class="sub" id="pull-meta"></div></div>
+      </div>
+      <p class="hint-text" id="pull-between"></p>
+      <div class="row">
+        <button class="pill solid grow" id="pull-spin">Spin it</button>
+        <button class="pill" id="pull-close">Close</button>
+      </div>
+      <button class="link" id="pull-remove">Remove from shelf</button>
+    </div>
   </main>
 
   <!-- Add record -->
   <main class="view view-add" data-view="add" hidden>
     <header class="bar">
       <button class="icon-btn" data-go="now" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
-      <span class="kicker dim">SEARCH · MUSICBRAINZ</span>
+      <span class="kicker dim" id="add-kicker">SEARCH · MUSICBRAINZ</span>
     </header>
-    <h1>New record</h1>
+    <h1 id="add-title">New record</h1>
     <form class="search big" data-search>
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
       <label class="sr" for="add-q">Search artist or album</label>
@@ -226,6 +276,23 @@
         <a class="pill" id="ca-download" href="/vinylpi-ca.crt" download>Download certificate</a>
         <a class="pill solid" id="secure-open" href="#">Open secure page</a>
       </div>
+    </section>
+    <section class="card stack" id="discogs-card">
+      <div class="row between">
+        <span>Discogs</span>
+        <span class="kicker dim" id="discogs-state">NOT LINKED</span>
+      </div>
+      <p class="hint-text">Link Discogs and every record you add to your shelf is added to your Discogs collection too. You can also pull your Discogs collection onto the shelf. <a href="https://www.discogs.com/settings/developers" target="_blank" rel="noopener">Get a token</a> (Generate new token).</p>
+      <form class="row" id="discogs-form">
+        <label class="sr" for="discogs-token">Discogs personal token</label>
+        <input id="discogs-token" type="password" class="field grow" placeholder="Paste your Discogs token" autocomplete="off">
+        <button class="pill">Save</button>
+      </form>
+      <div class="row" id="discogs-actions" hidden>
+        <button class="pill" id="discogs-import">Import my Discogs collection</button>
+      </div>
+      <p class="msg" id="discogs-msg" role="status"></p>
+      <button class="link" id="discogs-remove" hidden>Unlink Discogs</button>
     </section>
     <section class="card stack" id="song-card">
       <div class="row between">

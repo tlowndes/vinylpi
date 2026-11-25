@@ -102,6 +102,7 @@ def status():
         "auto_update": e.get("AUTO_UPDATE", "1") == "1",
         "cover_scan": bool(e.get("ANTHROPIC_API_KEY")),
         "song_id": bool(e.get("AUDD_API_TOKEN")),
+        "discogs": bool(e.get("DISCOGS_TOKEN")),
         "https": os.path.exists(os.path.join(TLS_DIR, "ca.crt")),
         "update": _read_json(os.path.join(DATA_DIR, "update.json"), {}),
         "watchdog": _read_json(os.path.join(RUN_DIR, "watchdog.json"), {}),

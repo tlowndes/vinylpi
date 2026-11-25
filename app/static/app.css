@@ -246,7 +246,44 @@ select { height: 44px; padding: 0 14px; }
 @media (min-width: 960px) { .view-stats { max-width: 760px !important; } }
 .hint-text { margin: 0; color: var(--mute); font-size: 14px; line-height: 1.45; }
 .hint-text a { color: var(--accent); }
-#cover-card .link, #song-card .link, #secure-tip { align-self: flex-start; }
+#cover-card .link, #song-card .link, #secure-tip, #discogs-card .link { align-self: flex-start; }
+
+/* ---------- Shelf ---------- */
+.view-shelf { padding-bottom: calc(220px + env(safe-area-inset-bottom)); }
+.shelf-tools { display: flex; flex-wrap: wrap; gap: 10px; }
+.tabs.seg { margin-left: 0; background: var(--surf); max-width: 100%; overflow-x: auto; }
+.tabs.seg button { height: 36px; padding: 0 14px; flex: none; }
+.shelf { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.shelf-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.shelf-head .kicker.dim { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-transform: none; }
+.shelf.over .shelf-head .kicker.accent { color: var(--warn); }
+/* Spines stand on planks: every wrapped row gets its own plank line. */
+.plank { --h: 156px; display: flex; flex-wrap: wrap; align-items: flex-end; row-gap: 14px; padding: 10px 10px 14px; border-radius: 14px;
+  background: var(--panel) repeating-linear-gradient(to bottom, transparent 0 calc(var(--h) + 10px), #2B2420 calc(var(--h) + 10px) calc(var(--h) + 24px)); }
+.spine { position: relative; width: 30px; height: var(--h); padding: 0; border: 0; border-radius: 3px 3px 1px 1px; margin-right: 2px; overflow: hidden;
+  background: var(--surf) center / auto 100% no-repeat; box-shadow: inset -2px 0 0 rgba(0, 0, 0, 0.35), inset 1px 0 0 rgba(255, 255, 255, 0.08);
+  transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
+.spine::before { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.25) 45%, rgba(0, 0, 0, 0.6)); }
+.spine span { position: absolute; inset: 6px 0; writing-mode: vertical-rl; transform: rotate(180deg); display: flex; align-items: center; gap: 6px;
+  font: 600 11px/1 var(--sans); color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+.spine span b { font: 400 10px var(--mono); letter-spacing: 0.04em; opacity: 0.8; overflow: hidden; text-overflow: ellipsis; }
+.spine:hover, .spine:focus-visible { transform: translateY(-6px); }
+.spine.out { transform: translateY(-16px); box-shadow: 0 0 0 2px var(--accent), 0 8px 18px rgba(0, 0, 0, 0.5); }
+.divider { width: 20px; height: calc(var(--h) + 8px); margin: 0 4px 0 2px; border-radius: 4px 4px 1px 1px; background: var(--accent); color: var(--base); position: relative; align-self: flex-end; }
+.divider i { position: absolute; top: 8px; left: 0; right: 0; writing-mode: vertical-rl; transform: rotate(180deg); font: 600 10px var(--mono); font-style: normal; letter-spacing: 0.08em; text-transform: uppercase; display: flex; align-items: center; }
+@media (prefers-reduced-motion: reduce) { .spine { transition: none; } }
+.order { list-style: none; margin: 0; padding: 6px; display: flex; flex-direction: column; gap: 2px; background: var(--panel); border-radius: 14px; }
+.order button { width: 100%; display: grid; grid-template-columns: 2.4em 36px minmax(0, 1fr) auto; gap: 12px; align-items: center; min-height: 48px; padding: 4px 10px; border: 0; border-radius: 10px; background: transparent; text-align: left; font-size: 15px; }
+.order button:hover { background: var(--surf); }
+.order .n { font: 12px var(--mono); color: var(--dim); text-align: right; }
+.order .art { width: 36px; height: 36px; border-radius: 4px; background: var(--surf) center / cover; }
+.order .tx { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--mute); }
+.order .tx b { color: var(--text); font-weight: 600; }
+.order .y { font: 12px var(--mono); color: var(--dim); }
+.order .div { font: 500 12px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); padding: 10px 10px 2px; }
+.sheet.pull { position: fixed; z-index: 5; }
+.field.num { width: 92px; flex: none; }
+.shelf-row .field { height: 44px; }
 .steps { border-top: 1px solid var(--line); padding-top: 10px; }
 .steps summary { cursor: pointer; font-weight: 600; font-size: 15px; }
 .steps ol { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; color: var(--mute); font-size: 14px; line-height: 1.45; }

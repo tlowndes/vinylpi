@@ -8,7 +8,9 @@ import uuid
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 
+import collection
 import cover
+import discogs
 import musicbrainz as mb
 import recognise
 import stats
@@ -20,6 +22,7 @@ DATA_DIR = system.DATA_DIR
 COVERS = os.path.join(DATA_DIR, "covers")
 STATE_FILE = os.path.join(DATA_DIR, "state.json")
 plays = stats.PlayLog(os.path.join(DATA_DIR, "plays.jsonl"))
+shelf = collection.Collection(os.path.join(DATA_DIR, "collection.json"))
 
 app = Flask(__name__, static_folder=None)
 app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
@@ -77,6 +80,7 @@ def _set_now(rec):
         state["now"] = rec
         state["spins"] = state.get("spins", 0) + 1
         _save_and_broadcast()
+    threading.Thread(target=_shelve, args=(dict(rec), True), daemon=True).start()
     return rec
 
 
@@ -152,6 +156,15 @@ def events():
 @app.post("/api/now")
 def set_now():
     body = request.get_json(force=True) or {}
+    if body.get("collection_id"):
+        item = next((r for r in shelf.all() if r["id"] == body["collection_id"]), None)
+        if not item:
+            return {"error": "That record isn't on your shelf any more"}, 404
+        if item.get("release") or item.get("release_group"):
+            body = {"release": item.get("release"), "release_group": item.get("release_group")}
+        else:
+            return jsonify(_set_now({k: item.get(k) for k in ("title", "artist", "year", "label", "cover", "discogs_id")}
+                                    | {"tracks": [], "manual": True}))
     try:
         if body.get("release_group") or body.get("release"):
             d = mb.details(release_group=body.get("release_group"), release_id=body.get("release"))
@@ -242,6 +255,150 @@ def cover_scan():
         found["artist"] = found["title"] = ""
         q = ""
     return jsonify({"found": found, "query": q})
+
+
+# ---------- collection (the shelf) ----------
+
+_import = {"state": "idle"}
+
+
+def _discogs_user(token):
+    try:
+        return discogs.username(token) if token else ""
+    except discogs.DiscogsError:
+        return ""
+
+
+def _shelve(rec, played=False):
+    """Put a record on the shelf, fill in its genres, and copy it to Discogs. Runs in the background."""
+    if not rec.get("title"):
+        return None
+    entry, new = shelf.add(rec, played=played)
+    if not entry.get("genres") and entry.get("release_group"):
+        try:
+            g = mb.genres(entry["release_group"])
+            if g:
+                shelf.update(entry["id"], genres=g)
+        except Exception:
+            pass
+    token = system.env().get("DISCOGS_TOKEN", "")
+    if token and not entry.get("discogs_synced"):
+        try:
+            rid = discogs.find_release(token, entry)
+            user = rid and _discogs_user(token)
+            if rid and user:
+                discogs.add_to_collection(token, user, rid)
+                shelf.update(entry["id"], discogs_id=rid, discogs_synced=True)
+        except Exception:
+            pass  # Discogs is a nice-to-have: the shelf on the Pi is the one that counts
+    return entry
+
+
+@app.get("/api/collection")
+def get_collection():
+    return jsonify(shelf.all())
+
+
+@app.post("/api/collection")
+def add_to_collection():
+    body = request.get_json(force=True) or {}
+    try:
+        if body.get("release_group") or body.get("release"):
+            d = mb.details(release_group=body.get("release_group"), release_id=body.get("release"))
+            if not d:
+                return {"error": "Couldn't find that record on MusicBrainz"}, 404
+            rec = _with_cover(d)
+        elif body.get("title"):
+            rec = {"title": body["title"][:200], "artist": body.get("artist", "")[:200]}
+        else:
+            return {"error": "Nothing to add"}, 400
+    except Exception as exc:
+        return {"error": f"MusicBrainz lookup failed: {exc}"}, 502
+    if shelf.find(rec):
+        return {"error": f"{rec['title']} is already on your shelf"}, 409
+    entry, _ = shelf.add(rec)
+    threading.Thread(target=_shelve, args=(rec,), daemon=True).start()
+    return jsonify(entry)
+
+
+@app.delete("/api/collection/<item_id>")
+def remove_from_collection(item_id):
+    return ({"ok": True} if shelf.remove(item_id) else ({"error": "Not on the shelf"}, 404))
+
+
+SHELVES_FILE = os.path.join(DATA_DIR, "shelves.json")
+
+
+@app.get("/api/shelves")
+def get_shelves():
+    try:
+        with open(SHELVES_FILE) as f:
+            return jsonify(json.load(f))
+    except Exception:
+        return jsonify([{"name": "Shelf 1", "capacity": 80}])
+
+
+@app.post("/api/shelves")
+def set_shelves():
+    body = request.get_json(force=True)
+    if not isinstance(body, list) or not 1 <= len(body) <= 50:
+        return {"error": "Between 1 and 50 shelves"}, 400
+    clean = []
+    for i, s in enumerate(body):
+        try:
+            cap = max(1, min(2000, int(s.get("capacity", 80))))
+        except (TypeError, ValueError, AttributeError):
+            return {"error": "Each shelf needs a number of records"}, 400
+        clean.append({"name": str(s.get("name") or f"Shelf {i + 1}")[:40], "capacity": cap})
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(SHELVES_FILE + ".tmp", "w") as f:
+        json.dump(clean, f)
+    os.replace(SHELVES_FILE + ".tmp", SHELVES_FILE)
+    return jsonify(clean)
+
+
+@app.get("/api/discogs")
+def discogs_status():
+    token = system.env().get("DISCOGS_TOKEN", "")
+    return jsonify({"connected": bool(token), "username": _discogs_user(token) if request.args.get("check") else None,
+                    "import": _import})
+
+
+def _run_import(token):
+    global _import
+    try:
+        user = discogs.username(token)
+        _import = {"state": "reading", "user": user}
+        items = discogs.collection(token, user)
+        _import = {"state": "adding", "user": user, "total": len(items), "done": 0, "added": 0}
+        os.makedirs(COVERS, exist_ok=True)
+        for it in items:
+            name = f"discogs-{it['discogs_id']}.jpg"
+            path = os.path.join(COVERS, name)
+            if not shelf.find(it):
+                if it.get("cover_url") and (os.path.exists(path) or mb.download_cover([it["cover_url"]], path)):
+                    it["cover"] = f"/covers/{name}"
+                it["discogs_synced"] = True
+                entry, new = shelf.add(it)
+                shelf.update(entry["id"], discogs_synced=True)
+                _import["added"] += int(new)
+            _import["done"] += 1
+        _import = {"state": "done", "user": user, "total": len(items), "added": _import["added"], "at": time.time()}
+    except discogs.DiscogsError as exc:
+        _import = {"state": "failed", "error": str(exc)}
+    except Exception as exc:
+        _import = {"state": "failed", "error": f"Import stopped: {exc}"}
+
+
+@app.post("/api/discogs/import")
+def discogs_import():
+    token = system.env().get("DISCOGS_TOKEN", "")
+    if not token:
+        return {"error": "Add your Discogs token in Settings first."}, 400
+    if _import.get("state") in ("reading", "adding"):
+        return jsonify(_import)
+    threading.Thread(target=_run_import, args=(token,), daemon=True).start()
+    return jsonify({"state": "reading"})
 
 
 # ---------- what's this song? ----------
@@ -340,6 +497,8 @@ def settings():
         results.append(system.admin("set-bitrate", str(body["bitrate"])))
     if "anthropic_key" in body:
         results.append(system.admin("set-anthropic-key", str(body["anthropic_key"]).strip()))
+    if "discogs_token" in body:
+        results.append(system.admin("set-discogs-token", str(body["discogs_token"]).strip()))
     if "audd_token" in body:
         results.append(system.admin("set-audd-token", str(body["audd_token"]).strip()))
     if "auto_update" in body:
