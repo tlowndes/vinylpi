@@ -125,6 +125,7 @@
         `<li${h && h.number === t.number ? ' class="on"' : ""}><span class="n">${esc(t.number)}</span><span>${esc(t.title)}</span><span class="t">${esc(t.length)}</span></li>`).join("");
       document.title = `${n.title} · Vinyl Pi`;
     }
+    setMediaInfo(n);
     $("#history").innerHTML = (state.history || []).slice(0, 8).map((h) =>
       `<li><div class="art" style="${h.cover ? `background-image:url('${esc(h.cover)}')` : ""}"></div>
         <div class="txt"><div class="t1">${esc(h.title)}</div><div class="t2">${esc(h.artist)} · ${esc(ago(h.started_at))}</div></div></li>`).join("");
@@ -149,47 +150,97 @@
     $("#identify-label").textContent = "What's this?";
   });
 
-  /* ---------- player + level meter ---------- */
+  /* ---------- player + level meter ----------
+     Phones get a plain <audio> element with no Web Audio in the way, so the browser treats it
+     like any music app: it keeps playing with the screen locked and shows lock-screen controls.
+     Computers also get the real level meter. If the stream drops, it reconnects by itself. */
   const meter = $("#meter");
   const BARS = 44;
   meter.innerHTML = "<i></i>".repeat(BARS);
   const bars = $$("i", meter);
+  const PHONE = matchMedia("(pointer: coarse)").matches || /Android|iPhone|iPad/i.test(navigator.userAgent);
+  const ms = "mediaSession" in navigator ? navigator.mediaSession : null;
   let ctx, analyser, buf, raf;
+  let wanted = false;      // the listener wants music: keep it going
+  let ours = false;        // a pause we made ourselves, not the phone
+  let retry = 0, retryTimer = null, lastTime = 0, lastMove = 0;
 
-  async function play() {
+  function connectStream() {
+    ours = true;
     audio.src = `${STREAM}?t=${Date.now()}`; // fresh connection, so we're as close to live as possible
     audio.volume = +$("#volume").value;
+    ours = false;
+    lastMove = Date.now();
+    return audio.play();
+  }
+  async function play() {
+    wanted = true;
+    clearTimeout(retryTimer); retryTimer = null;
     try {
-      await audio.play();
+      await connectStream();
     } catch {
-      return say($("#live"), "● STREAM OFFLINE", true);
+      if (!retry) { wanted = false; setPlaying(false); return say($("#live"), "● STREAM OFFLINE", true); }
+      return reconnect();
     }
-    app.classList.add("playing");
-    $("#play").setAttribute("aria-label", "Pause");
-    try {
-      if (!ctx) {
-        ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const src = ctx.createMediaElementSource(audio);
-        analyser = ctx.createAnalyser();
-        analyser.fftSize = 128;
-        buf = new Uint8Array(analyser.frequencyBinCount);
-        src.connect(analyser).connect(ctx.destination);
-      }
-      await ctx.resume();
-      draw();
-    } catch { /* meter is a nice-to-have */ }
+    retry = 0;
+    setPlaying(true);
+    if (!PHONE) {
+      try {
+        if (!ctx) {
+          ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const src = ctx.createMediaElementSource(audio);
+          analyser = ctx.createAnalyser();
+          analyser.fftSize = 128;
+          buf = new Uint8Array(analyser.frequencyBinCount);
+          src.connect(analyser).connect(ctx.destination);
+        }
+        await ctx.resume();
+      } catch { /* meter is a nice-to-have */ }
+    }
+    cancelAnimationFrame(raf);
+    draw();
   }
   function stop() {
+    wanted = false;
+    retry = 0;
+    clearTimeout(retryTimer); retryTimer = null;
+    ours = true;
     audio.pause();
     audio.removeAttribute("src");
     audio.load();
-    app.classList.remove("playing");
-    $("#play").setAttribute("aria-label", "Play");
-    cancelAnimationFrame(raf);
-    bars.forEach((b) => { b.style.height = "8%"; b.classList.remove("on"); });
+    ours = false;
+    setPlaying(false);
+  }
+  function setPlaying(on) {
+    app.classList.toggle("playing", on);
+    $("#play").setAttribute("aria-label", on ? "Pause" : "Play");
+    if (ms) ms.playbackState = on ? "playing" : "paused";
+    if (!on) {
+      cancelAnimationFrame(raf);
+      bars.forEach((b) => { b.style.height = "8%"; b.classList.remove("on"); });
+    }
+  }
+  // The stream dropped (Wi-Fi blip, Pi restarted the stream): try again, waiting a bit longer each time.
+  function reconnect() {
+    if (!wanted || retryTimer) return;
+    say($("#live"), "● RECONNECTING", true);
+    const wait = Math.min(15000, 1000 * 2 ** retry++);
+    retryTimer = setTimeout(async () => {
+      retryTimer = null;
+      if (!wanted) return;
+      try { await connectStream(); retry = 0; setPlaying(true); refreshLive(); }
+      catch { reconnect(); }
+    }, wait);
   }
   function draw() {
-    analyser.getByteFrequencyData(buf);
+    if (analyser) {
+      analyser.getByteFrequencyData(buf);
+    } else {
+      // Phones: no Web Audio (it would stop the music when the screen locks), so the bars just dance.
+      buf = buf || new Uint8Array(48);
+      const t = performance.now() / 1000;
+      for (let i = 0; i < buf.length; i++) buf[i] = 90 + 80 * Math.abs(Math.sin(t * (1.3 + i * 0.07) + i)) * (1 - (i / buf.length) * 0.6);
+    }
     const level = buf.reduce((a, v) => a + v, 0) / buf.length / 255;
     bars.forEach((b, i) => {
       const v = buf[Math.floor((i / BARS) * buf.length * 0.8)] / 255;
@@ -198,9 +249,49 @@
     });
     raf = requestAnimationFrame(draw);
   }
-  $("#play").addEventListener("click", () => (app.classList.contains("playing") ? stop() : play()));
+  $("#play").addEventListener("click", () => (wanted ? stop() : play()));
   $("#volume").addEventListener("input", (e) => (audio.volume = +e.target.value));
-  audio.addEventListener("error", () => { if (audio.getAttribute("src")) { stop(); say($("#live"), "● STREAM OFFLINE", true); } });
+  audio.addEventListener("error", () => { if (wanted && !ours) reconnect(); });
+  audio.addEventListener("ended", () => { if (wanted) reconnect(); });
+  audio.addEventListener("pause", () => {
+    // Paused by the phone (lock-screen button, headphones out, a call): treat it as Stop, so Play is live again.
+    // A dropped stream also fires "pause", so give "error"/"ended" a moment to claim it first.
+    if (ours || !wanted) return;
+    setTimeout(() => {
+      if (wanted && !retryTimer && audio.paused && !audio.ended && !audio.error) stop();
+    }, 400);
+  });
+  audio.addEventListener("timeupdate", () => {
+    if (audio.currentTime !== lastTime) { lastTime = audio.currentTime; lastMove = Date.now(); }
+  });
+  // Watchdog: music stuck for 12 seconds means the connection has quietly died.
+  setInterval(() => {
+    if (wanted && !retryTimer && !audio.paused && Date.now() - lastMove > 12000) { lastMove = Date.now(); reconnect(); }
+  }, 4000);
+  // Back on the page after the phone slept: if the music should be on but isn't, pick it back up.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) return;
+    if (wanted && audio.paused) reconnect();
+    if (wanted && ctx) ctx.resume().catch(() => {});
+  });
+
+  // Lock-screen and notification controls, with the record's title and cover.
+  if (ms) {
+    const on = (a, fn) => { try { ms.setActionHandler(a, fn); } catch { /* not supported here */ } };
+    on("play", () => play());
+    on("pause", () => stop());
+    on("stop", () => stop());
+  }
+  function setMediaInfo(n) {
+    if (!ms || !("MediaMetadata" in window)) return;
+    const art = n?.cover ? new URL(n.cover, location.href).href : new URL("/static/icon-512.png", location.href).href;
+    ms.metadata = new MediaMetadata({
+      title: n ? n.title : "Vinyl Pi",
+      artist: n ? n.artist || "" : "Live from the turntable",
+      album: n ? `Side ${n.side || "A"}` : "",
+      artwork: [{ src: art, sizes: "512x512", type: n?.cover ? "image/jpeg" : "image/png" }],
+    });
+  }
 
   /* ---------- search ---------- */
   let searchTimer;
@@ -914,6 +1005,27 @@
     connect();
     upgrade();
   })();
+
+  /* ---------- home-screen app ---------- */
+  // Phones only offer "Add to home screen" as an app on a secure (https) page with a service worker.
+  if ("serviceWorker" in navigator && SECURE) navigator.serviceWorker.register("/sw.js").catch(() => {});
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  $("#phone-state").textContent = standalone ? "APP" : "BROWSER";
+  $("#phone-state").classList.toggle("accent", !!standalone);
+  let installPrompt;
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    installPrompt = e;
+    $("#install-app").hidden = false;
+  });
+  $("#install-app").addEventListener("click", async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    await installPrompt.userChoice.catch(() => {});
+    installPrompt = null;
+    $("#install-app").hidden = true;
+  });
+  window.addEventListener("appinstalled", () => { $("#install-app").hidden = true; $("#phone-state").textContent = "APP"; });
 
   // If this phone already trusts the Pi's certificate, hop to the secure page quietly.
   // A no-cors fetch only succeeds when the certificate is trusted.
