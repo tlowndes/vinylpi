@@ -36,6 +36,13 @@
       <div class="kicker accent" id="side-line">NOTHING ON THE PLATTER</div>
       <h1 id="title">Drop the needle</h1>
       <p class="sub" id="artist">Then tell Vinyl Pi what's spinning.</p>
+      <div class="heard">
+        <button class="chip" id="identify">
+          <span class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          <span id="identify-label">What's this?</span>
+        </button>
+        <p class="heard-txt" id="heard" aria-live="polite"></p>
+      </div>
       <ol class="tracks" id="tracks"></ol>
 
       <div class="meter" id="meter" role="img" aria-label="Live input level"></div>
@@ -75,7 +82,7 @@
       <input id="add-q" name="q" placeholder="Artist or album" autocomplete="off" enterkeyhint="search">
     </form>
     <div class="row">
-      <button class="pill grow" data-go="scan">Scan barcode</button>
+      <button class="pill grow" data-go="scan" id="scan-open">Scan barcode</button>
       <button class="pill grow" id="manual-open">Type it in</button>
     </div>
     <form class="manual card" id="manual" hidden>
@@ -90,6 +97,7 @@
   <!-- Scan -->
   <main class="view view-scan" data-view="scan" hidden>
     <div class="viewfinder" id="viewfinder">
+      <video id="live-cam" playsinline muted hidden></video>
       <img id="shot" alt="Your photo of the sleeve" hidden>
       <div class="frame" aria-hidden="true"></div>
       <p class="hint" id="scan-hint">Take a photo of the barcode on the back of the sleeve.</p>
@@ -106,6 +114,7 @@
         <img id="match-art" alt="">
         <div><div class="match-title" id="match-title"></div><div class="sub" id="match-meta"></div></div>
       </div>
+      <div class="match-tracks" id="match-tracks" hidden></div>
       <p class="msg" id="scan-msg" role="status"></p>
       <form class="row" id="q-form" hidden>
         <label class="sr" for="cover-q">Search for</label>
@@ -123,6 +132,7 @@
         <button class="pill">Look up</button>
       </form>
       <button class="pill solid" id="spin-match" hidden>Spin it</button>
+      <button class="link" id="secure-tip" data-go="settings" hidden>Want a live camera? Set up the secure page</button>
     </div>
   </main>
 
@@ -189,6 +199,46 @@
         <button class="pill">Save</button>
       </form>
       <button class="link" id="key-remove" hidden>Remove key</button>
+    </section>
+    <section class="card stack" id="secure-card">
+      <div class="row between">
+        <span>Secure page</span>
+        <span class="kicker dim" id="secure-state">OFF</span>
+      </div>
+      <p class="hint-text">Phones only allow the live camera scanner on a secure (https) page. Trust Vinyl Pi's certificate once on each phone, then use the secure address.</p>
+      <details class="steps">
+        <summary>iPhone or iPad</summary>
+        <ol>
+          <li>In Safari, tap <b>Download certificate</b> below, then <b>Allow</b>.</li>
+          <li>Open <b>Settings</b>, tap <b>Profile Downloaded</b>, then <b>Install</b>.</li>
+          <li>Go to <b>Settings → General → About → Certificate Trust Settings</b> and turn on <b>Vinyl Pi</b>.</li>
+        </ol>
+      </details>
+      <details class="steps">
+        <summary>Android</summary>
+        <ol>
+          <li>Tap <b>Download certificate</b> below.</li>
+          <li>Open <b>Settings</b> and search for <b>CA certificate</b>. Tap it, then <b>Install anyway</b> and pick <b>vinylpi-ca.crt</b>.</li>
+          <li>No luck? Just open the secure page, tap <b>Advanced</b>, then <b>Proceed</b>. Chrome remembers it.</li>
+        </ol>
+      </details>
+      <div class="row">
+        <a class="pill" id="ca-download" href="/vinylpi-ca.crt" download>Download certificate</a>
+        <a class="pill solid" id="secure-open" href="#">Open secure page</a>
+      </div>
+    </section>
+    <section class="card stack" id="song-card">
+      <div class="row between">
+        <span>Song recognition</span>
+        <span class="kicker dim" id="song-state">FREE TRIAL</span>
+      </div>
+      <p class="hint-text">Tap <b>What's this?</b> on the Now playing screen and AudD names the song from the stream. It works a few times a day without a token. Add a free AudD token for about 300 more, then it's roughly $2 per 1,000. <a href="https://dashboard.audd.io/" target="_blank" rel="noopener">Get a token</a></p>
+      <form class="row" id="audd-form">
+        <label class="sr" for="audd-token">AudD API token</label>
+        <input id="audd-token" type="password" class="field grow" placeholder="Paste your AudD token" autocomplete="off">
+        <button class="pill">Save</button>
+      </form>
+      <button class="link" id="audd-remove" hidden>Remove token</button>
     </section>
     <section class="card row between">
       <span>Auto-update nightly</span>

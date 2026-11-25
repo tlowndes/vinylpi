@@ -10,6 +10,7 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 
 import cover
 import musicbrainz as mb
+import recognise
 import stats
 import system
 
@@ -102,6 +103,16 @@ def static_files(name):
     return send_from_directory(STATIC, name)
 
 
+@app.get("/vinylpi-ca.crt")
+def ca_cert():
+    # The Pi's own certificate authority. Trust it once on a phone and https://vinyl.local works with no warning.
+    path = os.path.join(system.TLS_DIR, "ca.crt")
+    if not os.path.exists(path):
+        return {"error": "The secure page isn't set up yet. Run an update from Settings."}, 404
+    return send_from_directory(system.TLS_DIR, "ca.crt", mimetype="application/x-x509-ca-cert",
+                               as_attachment=True, download_name="vinylpi-ca.crt", max_age=0)
+
+
 @app.get("/covers/<path:name>")
 def covers(name):
     return send_from_directory(COVERS, name, max_age=86400 * 30)
@@ -167,6 +178,7 @@ def flip():
         i = sides.index(now["side"]) if now.get("side") in sides else -1
         now["side"] = sides[(i + 1) % len(sides)]
         now["started_at"] = time.time()
+        now.pop("heard", None)
         _save_and_broadcast()
     return jsonify(now)
 
@@ -209,7 +221,8 @@ def barcode(code):
     if not d:
         return {"error": "No record with that barcode on MusicBrainz"}, 404
     return jsonify({"release": d["release"], "release_group": d["release_group"], "title": d["title"],
-                    "artist": d["artist"], "year": d["year"], "label": d["label"], "cover": d["cover_url"]})
+                    "artist": d["artist"], "year": d["year"], "label": d["label"], "cover": d["cover_url"],
+                    "tracks": d["tracks"]})
 
 
 @app.post("/api/cover")
@@ -229,6 +242,75 @@ def cover_scan():
         found["artist"] = found["title"] = ""
         q = ""
     return jsonify({"found": found, "query": q})
+
+
+# ---------- what's this song? ----------
+
+def _norm(s):
+    s = (s or "").lower().split(" (")[0].split(" - ")[0]
+    return "".join(ch for ch in s if ch.isalnum())
+
+
+def _match_track(rec, title):
+    want = _norm(title)
+    for t in rec.get("tracks", []) if want else []:
+        have = _norm(t["title"])
+        if have and (have == want or have.startswith(want) or want.startswith(have)):
+            return t
+    return None
+
+
+def _album_for(song):
+    """Nothing on the platter: find the album on MusicBrainz so the page fills itself in."""
+    try:
+        hits = mb.search(" ".join(x for x in (song["artist"], song["album"] or song["title"]) if x), limit=3)
+        want = _norm(song["album"])
+        pick = next((h for h in hits if want and _norm(h["title"]) == want), hits[0] if hits else None)
+        d = pick and mb.details(release_group=pick["release_group"])
+        return _with_cover(d) if d else None
+    except Exception:
+        return None
+
+
+def _save_artwork(url):
+    """Keep AudD's artwork on the Pi, so the page can read its colours (no cross-site image)."""
+    os.makedirs(COVERS, exist_ok=True)
+    name = f"song-{uuid.uuid5(uuid.NAMESPACE_URL, url).hex[:16]}.jpg"
+    path = os.path.join(COVERS, name)
+    return f"/covers/{name}" if os.path.exists(path) or mb.download_cover([url], path) else None
+
+
+@app.post("/api/identify")
+def identify():
+    e = system.env()
+    try:
+        clip = recognise.capture(f"http://127.0.0.1:8000/{e.get('MOUNT', 'vinyl')}")
+        song = recognise.identify(clip, e.get("AUDD_API_TOKEN", ""))
+    except recognise.RecogniseError as exc:
+        return {"error": str(exc)}, 502
+    if not song:
+        return {"found": False, "message": "Couldn't name that one. Try again in the middle of a song."}
+
+    if not state.get("now"):
+        rec = _album_for(song)
+        _set_now(rec or {"title": song["album"] or song["title"], "artist": song["artist"], "year": song["year"],
+                         "label": "", "tracks": [], "cover": None, "manual": True})
+    now = state.get("now")
+    art = _save_artwork(song["artwork"]) if now and not now.get("cover") and song.get("artwork") else None
+    with _lock:
+        now = state.get("now")
+        if now:
+            t = _match_track(now, song["title"])
+            if t:
+                song["number"] = t["number"]
+                s = _side_of(t["number"])
+                if s and s != now.get("side") and s in (now.get("sides") or []):
+                    now["side"] = s  # the record was flipped without telling us
+            if art and not now.get("cover"):
+                now["cover"] = art
+            now["heard"] = song
+            _save_and_broadcast()
+    return jsonify({"found": True, "song": song})
 
 
 # ---------- Pi ----------
@@ -258,6 +340,8 @@ def settings():
         results.append(system.admin("set-bitrate", str(body["bitrate"])))
     if "anthropic_key" in body:
         results.append(system.admin("set-anthropic-key", str(body["anthropic_key"]).strip()))
+    if "audd_token" in body:
+        results.append(system.admin("set-audd-token", str(body["audd_token"]).strip()))
     if "auto_update" in body:
         results.append(system.admin("set-auto-update", "1" if body["auto_update"] else "0"))
     ok = all(r[0] for r in results)

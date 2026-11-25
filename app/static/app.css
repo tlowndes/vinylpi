@@ -77,10 +77,50 @@ select { height: 44px; padding: 0 14px; }
 .meter i.on { background: var(--accent); }
 .controls { display: flex; gap: 10px; align-items: center; }
 .controls .pill { flex: 1; }
-.play { width: 64px; height: 64px; border-radius: 32px; border: 0; background: var(--text); color: var(--base); display: inline-flex; align-items: center; justify-content: center; flex: none; }
-.play svg { width: 24px; height: 24px; }
+/* Play button: white disc at rest; while playing it becomes a spinning record with a soft accent glow. */
+.play { position: relative; isolation: isolate; overflow: hidden; width: 64px; height: 64px; border-radius: 32px; border: 0; background: var(--text); color: var(--base); display: inline-flex; align-items: center; justify-content: center; flex: none;
+  transition: background 0.35s, transform 0.15s, box-shadow 0.35s; }
+.play:active { transform: scale(0.93); }
+.play svg { position: relative; width: 24px; height: 24px; transition: transform 0.35s; }
+.play::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: 50%; opacity: 0; transform: scale(0.4);
+  background:
+    conic-gradient(from 20deg, transparent 0 8%, rgba(255, 255, 255, 0.16) 12%, transparent 17% 55%, rgba(255, 255, 255, 0.1) 60%, transparent 65%),
+    radial-gradient(circle at 50% 50%, #050506 0 4%, transparent 4.5%) 0 -10px / 100% 100% no-repeat,
+    radial-gradient(circle at 50% 50%, var(--accent) 0 30%, #050506 31% 33%, transparent 34%),
+    repeating-radial-gradient(circle at 50% 50%, #0B0B0D 0 2px, #17171B 2px 3px);
+  transition: opacity 0.35s, transform 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.3); }
 .play .i-pause, .playing .play .i-play { display: none; }
 .playing .play .i-pause { display: block; }
+.playing .play { background: #050506; animation: glow 2.6s ease-in-out infinite; }
+.playing .play svg { transform: scale(0.72); }
+.playing .play::before { opacity: 1; transform: scale(1); animation: spin 1.8s linear infinite; }
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent), 0 0 14px 0 color-mix(in srgb, var(--accent) 30%, transparent); }
+  50% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent), 0 0 30px 4px color-mix(in srgb, var(--accent) 45%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .playing .play, .playing .play::before { animation: none; }
+  .playing .play { box-shadow: 0 0 22px 2px color-mix(in srgb, var(--accent) 40%, transparent); }
+}
+
+/* What's this? */
+.heard { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.chip { height: 36px; padding: 0 14px 0 12px; border-radius: 18px; border: 0; background: var(--surf); box-shadow: inset 0 0 0 1px var(--line2); display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; transition: box-shadow 0.3s; }
+.chip:hover { box-shadow: inset 0 0 0 1px var(--accent); }
+.wave { display: inline-flex; align-items: center; gap: 2px; height: 14px; }
+.wave i { width: 2px; height: 40%; border-radius: 1px; background: var(--accent); }
+.wave i:nth-child(2) { height: 100%; } .wave i:nth-child(3) { height: 65%; } .wave i:nth-child(4) { height: 30%; }
+.chip.busy { box-shadow: inset 0 0 0 1px var(--accent); cursor: progress; }
+.chip.busy .wave i { animation: hear 0.9s ease-in-out infinite; }
+.chip.busy .wave i:nth-child(2) { animation-delay: -0.6s; } .chip.busy .wave i:nth-child(3) { animation-delay: -0.3s; } .chip.busy .wave i:nth-child(4) { animation-delay: -0.45s; }
+@keyframes hear { 0%, 100% { height: 25%; } 50% { height: 100%; } }
+.heard-txt { margin: 0; font-size: 15px; line-height: 1.45; }
+.heard-txt:empty { display: none; }
+.heard-txt .by { color: var(--mute); }
+.heard-txt.err { color: var(--bad); font-size: 14px; }
+.tracks li.on { color: var(--text); }
+.tracks li.on .n { color: var(--accent); }
+.tracks li.on .n::before { content: "♪ "; }
 .volume { display: flex; align-items: center; gap: 12px; }
 .volume input { flex: 1; accent-color: var(--accent); }
 .side { display: none; }
@@ -126,6 +166,7 @@ select { height: 44px; padding: 0 14px; }
 /* ---------- Scan ---------- */
 .view-scan { padding: 0; position: relative; min-height: 100dvh; background: #050506; }
 .viewfinder { position: absolute; inset: 0; background: #2A2F36; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.viewfinder video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .viewfinder img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .viewfinder .frame { position: absolute; left: 12%; right: 12%; top: 32%; height: 26%; border-radius: 24px; box-shadow: 0 0 0 2px var(--accent), 0 0 0 999px rgba(5, 5, 6, 0.55); }
 .viewfinder .hint { position: absolute; left: 24px; right: 24px; top: 60%; text-align: center; color: var(--text); font-size: 15px; }
@@ -139,6 +180,10 @@ select { height: 44px; padding: 0 14px; }
 .match img { width: 72px; height: 72px; border-radius: 10px; object-fit: cover; background: var(--surf); }
 .match-title { font-weight: 700; font-size: 20px; letter-spacing: -0.02em; }
 .match .sub { margin: 2px 0 0; font-size: 14px; }
+.match-tracks { max-height: 34dvh; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; padding-right: 4px; }
+.match-tracks ol { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--mute); }
+.match-tracks li { display: grid; grid-template-columns: 2.4em 1fr auto; gap: 8px; }
+.match-tracks .n, .match-tracks .t { font: 12px var(--mono); color: var(--dim); padding-top: 2px; }
 .file { position: relative; overflow: hidden; }
 .file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 
@@ -201,8 +246,14 @@ select { height: 44px; padding: 0 14px; }
 @media (min-width: 960px) { .view-stats { max-width: 760px !important; } }
 .hint-text { margin: 0; color: var(--mute); font-size: 14px; line-height: 1.45; }
 .hint-text a { color: var(--accent); }
-#cover-card .link { align-self: flex-start; }
+#cover-card .link, #song-card .link, #secure-tip { align-self: flex-start; }
+.steps { border-top: 1px solid var(--line); padding-top: 10px; }
+.steps summary { cursor: pointer; font-weight: 600; font-size: 15px; }
+.steps ol { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; color: var(--mute); font-size: 14px; line-height: 1.45; }
+.steps b { color: var(--text); font-weight: 600; }
+#secure-card .row { flex-wrap: wrap; }
 .viewfinder.cover .frame { left: 10%; right: 10%; top: 16%; height: auto; aspect-ratio: 1; }
 .viewfinder.cover .hint { top: auto; bottom: 46%; }
 
 .report { margin: 0; max-height: 50vh; overflow: auto; font: 11px/1.5 var(--mono); color: var(--mute); white-space: pre-wrap; word-break: break-word; user-select: text; }
+#secure-card a.pill:not(.solid) { color: var(--text); }

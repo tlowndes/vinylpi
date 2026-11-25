@@ -9,7 +9,7 @@ set -euo pipefail
 MODE="${1:-live}"; MODE="${MODE#--}"
 APP_DIR=/opt/vinyl-pi
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PACKAGES=(icecast2 ffmpeg alsa-utils avahi-daemon git curl network-manager python3 python3-flask python3-waitress python3-venv rfkill iw dnsmasq-base)
+PACKAGES=(icecast2 ffmpeg alsa-utils avahi-daemon git curl network-manager python3 python3-flask python3-waitress python3-venv rfkill iw dnsmasq-base nginx openssl)
 
 step() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 
@@ -26,7 +26,12 @@ if (( ${#missing[@]} )); then
   step "Installing ${missing[*]} (a few minutes on a Pi 3)"
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
-  apt-get install -y -qq "${missing[@]}"
+  # Don't let packages start services mid-install: stock nginx wants port 80, which the web app has.
+  had_policy=0; [[ -e /usr/sbin/policy-rc.d ]] && had_policy=1
+  (( had_policy )) || printf '#!/bin/sh\nexit 101\n' >/usr/sbin/policy-rc.d
+  chmod +x /usr/sbin/policy-rc.d
+  apt-get install -y -qq "${missing[@]}" || { (( had_policy )) || rm -f /usr/sbin/policy-rc.d; exit 1; }
+  (( had_policy )) || rm -f /usr/sbin/policy-rc.d
 fi
 
 # The web app reads the version with git as the vinyl user, so trust the folder whoever owns it.
@@ -50,6 +55,9 @@ for unit in icecast2.service vinyl-stream.service vinyl-web.service vinyl-wifi.s
   install -m 644 "$APP_DIR/config/$unit" "/etc/systemd/system/$unit"
 done
 install -m 644 "$APP_DIR/config/tmpfiles.conf" /usr/lib/tmpfiles.d/vinyl-pi.conf
+install -d /etc/systemd/system/nginx.service.d
+install -m 644 "$APP_DIR/config/nginx-vinyl.conf" /etc/systemd/system/nginx.service.d/vinyl-pi.conf
+rm -f /etc/nginx/sites-enabled/default
 install -d /etc/NetworkManager/dnsmasq-shared.d
 install -m 644 "$APP_DIR/config/dnsmasq-captive.conf" /etc/NetworkManager/dnsmasq-shared.d/vinyl-pi.conf
 install -m 440 "$APP_DIR/config/sudoers" /etc/sudoers.d/vinyl-pi
@@ -60,7 +68,7 @@ if [[ -d /boot/firmware && ! -e /boot/firmware/vinylpi-wifi.txt ]]; then
   install -m 644 "$APP_DIR/config/vinylpi-wifi.txt" /boot/firmware/vinylpi-wifi.txt 2>/dev/null || true
 fi
 
-systemctl enable icecast2 avahi-daemon NetworkManager vinyl-stream vinyl-web vinyl-wifi vinyl-update.timer vinyl-firstboot >/dev/null 2>&1
+systemctl enable icecast2 nginx avahi-daemon NetworkManager vinyl-stream vinyl-web vinyl-wifi vinyl-update.timer vinyl-firstboot >/dev/null 2>&1
 
 if [[ "$MODE" == image ]]; then
   # Passwords are made on first boot, so every Pi gets its own.
@@ -77,6 +85,8 @@ if [[ "$MODE" == update ]]; then
   "$APP_DIR/scripts/configure.sh"
   systemctl restart icecast2 || true
   systemctl restart vinyl-web vinyl-wifi vinyl-stream
+  systemctl enable nginx >/dev/null 2>&1 || true
+  systemctl restart nginx || echo "The secure page (https) didn't start: journalctl -u nginx" >&2
   exit 0
 fi
 
@@ -84,6 +94,7 @@ step "Starting everything"
 "$APP_DIR/scripts/configure.sh"
 systemctl restart icecast2
 systemctl restart vinyl-stream vinyl-web vinyl-wifi
+systemctl restart nginx || echo "The secure page (https) didn't start: journalctl -u nginx" >&2
 systemctl start vinyl-update.timer
 sleep 3
 
@@ -92,5 +103,6 @@ source /etc/vinyl-pi/vinyl.env
 host="$(hostname).local"
 step "Done"
 echo "Open this on your phone or PC:   http://${host}"
+echo "Secure page (live camera scan):   https://${host}  (trust the certificate first: Settings -> Secure page)"
 echo "Raw stream (for VLC and friends): http://${host}:8000/${MOUNT}"
 systemctl is-active --quiet vinyl-stream || echo "The stream isn't running yet. Is the turntable plugged in and on? Check: journalctl -u vinyl-stream -n 30"

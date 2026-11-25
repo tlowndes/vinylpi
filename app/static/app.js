@@ -4,7 +4,9 @@
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const app = $("#app");
   const audio = $("#audio");
-  const STREAM = `${location.protocol}//${location.hostname}:8000/vinyl`;
+  const SECURE = location.protocol === "https:";
+  // On the secure page the stream comes through the same address (nginx), or the browser would block it.
+  const STREAM = SECURE ? `${location.origin}/vinyl` : `http://${location.hostname}:8000/vinyl`;
   let state = { now: null, history: [] };
   let status = {};
   let match = null;
@@ -34,9 +36,10 @@
   function go(view) {
     if (status.mode === "hotspot") view = "wifi";
     $$(".view").forEach((v) => (v.hidden = v.dataset.view !== view));
+    if (view !== "scan") stopLive();
     if (view === "settings") loadStatus();
     if (view === "stats") loadStats();
-    if (view === "scan") setScanMode();
+    if (view === "scan") { setScanMode(); if (CAN_LIVE) startLive(); $("#secure-tip").hidden = CAN_LIVE; }
     if (view === "wifi") loadNetworks();
     if (view === "add") setTimeout(() => $("#add-q").focus(), 50);
     history.replaceState(null, "", view === "now" ? "/" : `#${view}`);
@@ -91,6 +94,7 @@
       $("#title").textContent = "Drop the needle";
       $("#artist").textContent = "Then tell Vinyl Pi what's spinning.";
       $("#tracks").innerHTML = "";
+      $("#heard").innerHTML = "";
       sleeve.style.backgroundImage = "";
       sleeve.classList.add("empty");
       setColours(null);
@@ -103,8 +107,14 @@
       sleeve.classList.toggle("empty", !n.cover);
       setColours(n.cover);
       const side = (n.tracks || []).filter((t) => !/^[A-Z]/i.test(t.number) || t.number[0].toUpperCase() === n.side);
+      const h = n.heard;
+      const heard = $("#heard");
+      if (h) {
+        heard.classList.remove("err");
+        heard.innerHTML = `<span class="kicker accent">♪ ${esc(ago(h.at).toUpperCase())}</span> <b>${esc(h.title)}</b> <span class="by">${esc(h.artist)}</span>`;
+      } else if (!heard.classList.contains("err")) heard.innerHTML = "";
       $("#tracks").innerHTML = side.slice(0, 8).map((t) =>
-        `<li><span class="n">${esc(t.number)}</span><span>${esc(t.title)}</span><span class="t">${esc(t.length)}</span></li>`).join("");
+        `<li${h && h.number === t.number ? ' class="on"' : ""}><span class="n">${esc(t.number)}</span><span>${esc(t.title)}</span><span class="t">${esc(t.length)}</span></li>`).join("");
       document.title = `${n.title} · Vinyl Pi`;
     }
     $("#history").innerHTML = (state.history || []).slice(0, 8).map((h) =>
@@ -114,6 +124,22 @@
   setInterval(render, 60000);
 
   $("#flip").addEventListener("click", () => api("/api/flip", { method: "POST" }).catch(() => {}));
+
+  /* ---------- what's this song? ---------- */
+  $("#identify").addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    if (btn.classList.contains("busy")) return;
+    btn.classList.add("busy");
+    $("#identify-label").textContent = "Listening…";
+    try {
+      const r = await api("/api/identify", { method: "POST" });
+      if (!r.found) say($("#heard"), r.message, true);
+    } catch (err) {
+      say($("#heard"), err.message, true);
+    }
+    btn.classList.remove("busy");
+    $("#identify-label").textContent = "What's this?";
+  });
 
   /* ---------- player + level meter ---------- */
   const meter = $("#meter");
@@ -210,6 +236,42 @@
 
   /* ---------- scan ---------- */
   let scanMode = "barcode";
+
+  // Browsers only allow a live camera feed on secure (https or localhost) pages. vinyl.local is plain http,
+  // so there we open the phone's camera straight away instead, and read the barcode from the photo.
+  const CAN_LIVE = window.isSecureContext && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  let liveStream = null, liveTimer = null;
+  $("#scan-open").addEventListener("click", () => { if (!CAN_LIVE) { go("scan"); $("#photo").click(); } });
+  async function startLive() {
+    if (liveStream) return;
+    const video = $("#live-cam");
+    try {
+      liveStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } }, audio: false });
+    } catch { liveStream = null; return; }
+    video.srcObject = liveStream;
+    video.hidden = false;
+    $("#shot").hidden = true;
+    await video.play().catch(() => {});
+    const c = document.createElement("canvas");
+    let busy = false;
+    liveTimer = setInterval(async () => {
+      if (busy || scanMode !== "barcode" || !video.videoWidth) return;
+      busy = true;
+      try {
+        c.width = video.videoWidth; c.height = video.videoHeight;
+        c.getContext("2d").drawImage(video, 0, 0);
+        const code = await decode(c, true);
+        if (code) { $("#code").value = code; stopLive(true); await lookup(code); }
+      } catch { /* no barcode in this frame */ }
+      busy = false;
+    }, 600);
+  }
+  function stopLive(keepFrame) {
+    clearInterval(liveTimer); liveTimer = null;
+    if (liveStream) liveStream.getTracks().forEach((t) => t.stop());
+    liveStream = null;
+    if (!keepFrame) { $("#live-cam").srcObject = null; $("#live-cam").hidden = true; }
+  }
   $$(".tabs button").forEach((t) => t.addEventListener("click", () => {
     scanMode = t.dataset.mode;
     $$(".tabs button").forEach((b) => b.setAttribute("aria-selected", b === t));
@@ -308,13 +370,14 @@
     } catch (e) { say(msg, e.message, true); }
   }
 
-  async function decode(file) {
+  async function decode(file, quick = false) {
     const bitmap = await createImageBitmap(file);
     if ("BarcodeDetector" in window) {
       try {
         const found = await new BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e"] }).detect(bitmap);
         if (found.length) return found[0].rawValue;
       } catch { /* fall through to ZXing */ }
+      if (quick) return null;
     }
     if (!window.ZXing) {
       await new Promise((ok, fail) => {
@@ -333,6 +396,19 @@
     return res.getText();
   }
 
+  function showSides(tracks) {
+    const box = $("#match-tracks");
+    const sides = new Map();
+    tracks.forEach((t) => {
+      const s = /^[A-Z]/i.test(t.number) ? `SIDE ${t.number[0].toUpperCase()}` : "TRACKS";
+      if (!sides.has(s)) sides.set(s, []);
+      sides.get(s).push(t);
+    });
+    box.innerHTML = [...sides].map(([s, ts]) => `<section><div class="kicker accent">${esc(s)}</div><ol>${ts.map((t) =>
+      `<li><span class="n">${esc(t.number)}</span><span>${esc(t.title)}</span><span class="t">${esc(t.length)}</span></li>`).join("")}</ol></section>`).join("");
+    box.hidden = !tracks.length;
+  }
+
   async function lookup(code) {
     const msg = $("#scan-msg");
     say(msg, `Looking up ${code}…`);
@@ -342,9 +418,10 @@
       $("#match-art").src = match.cover;
       $("#match-title").textContent = match.title;
       $("#match-meta").textContent = [match.artist, match.year, match.label].filter(Boolean).join(" · ");
+      showSides(match.tracks || []);
       $("#spin-match").hidden = false;
       say(msg, "");
-    } catch (e) { match = null; $("#match").hidden = true; $("#spin-match").hidden = true; say(msg, e.message, true); }
+    } catch (e) { match = null; $("#match").hidden = true; $("#match-tracks").hidden = true; $("#spin-match").hidden = true; say(msg, e.message, true); }
   }
 
   $("#photo").addEventListener("change", async (e) => {
@@ -405,6 +482,14 @@
     $("#key-remove").hidden = !status.cover_scan;
     $("#api-key").placeholder = status.cover_scan ? "Key saved. Paste a new one to replace it" : "sk-ant-…";
     $("#bitrate").value = status.bitrate;
+    $("#secure-state").textContent = SECURE ? "IN USE" : status.https ? "READY" : "NOT SET UP";
+    $("#secure-state").classList.toggle("accent", SECURE);
+    $("#secure-open").href = `https://${location.hostname}/`;
+    $("#secure-open").hidden = SECURE;
+    $("#song-state").textContent = status.song_id ? "TOKEN SAVED" : "FREE TRIAL";
+    $("#song-state").classList.toggle("accent", !!status.song_id);
+    $("#audd-remove").hidden = !status.song_id;
+    $("#audd-token").placeholder = status.song_id ? "Token saved. Paste a new one to replace it" : "Paste your AudD token";
   }
   const smsg = $("#settings-msg");
   $("#update-check").addEventListener("click", async (e) => {
@@ -451,6 +536,17 @@
   }
   $("#key-form").addEventListener("submit", (e) => { e.preventDefault(); const k = $("#api-key").value.trim(); if (k) saveKey(k); });
   $("#key-remove").addEventListener("click", () => saveKey(""));
+  async function saveToken(token) {
+    say(smsg, token ? "Saving token…" : "Removing token…");
+    try {
+      const r = await api("/api/settings", { method: "POST", body: { audd_token: token } });
+      say(smsg, r.message || "Saved.");
+      $("#audd-token").value = "";
+      loadStatus();
+    } catch (err) { say(smsg, err.message, true); }
+  }
+  $("#audd-form").addEventListener("submit", (e) => { e.preventDefault(); const t = $("#audd-token").value.trim(); if (t) saveToken(t); });
+  $("#audd-remove").addEventListener("click", () => saveToken(""));
 
   $("#restart-stream").addEventListener("click", async () => {
     say(smsg, "Restarting the stream…");
@@ -573,5 +669,18 @@
     if (status.mode === "hotspot") go("wifi");
     else if (VIEWS.includes(start) && start !== "now") go(start);
     connect();
+    upgrade();
   })();
+
+  // If this phone already trusts the Pi's certificate, hop to the secure page quietly.
+  // A no-cors fetch only succeeds when the certificate is trusted.
+  async function upgrade() {
+    if (SECURE || !status.https || status.mode === "hotspot" || app.classList.contains("playing")) return;
+    try {
+      const ctl = new AbortController();
+      setTimeout(() => ctl.abort(), 3000);
+      await fetch(`https://${location.hostname}/api/health`, { mode: "no-cors", signal: ctl.signal });
+      location.replace(`https://${location.hostname}${location.pathname}${location.hash}`);
+    } catch { /* not trusted yet: stay on http */ }
+  }
 })();

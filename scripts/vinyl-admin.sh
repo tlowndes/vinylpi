@@ -33,6 +33,15 @@ case "${1:-}" in
       set_env ANTHROPIC_API_KEY "$key"; echo "Cover scan key saved"
     fi
     ;;
+  set-audd-token)
+    token="${2:-}"
+    if [[ -z "$token" ]]; then
+      sed -i '/^AUDD_API_TOKEN=/d' "$ENV_FILE"; echo "AudD token removed"
+    else
+      [[ "$token" =~ ^[A-Za-z0-9]{16,64}$ ]] || { echo "That doesn't look like an AudD API token" >&2; exit 2; }
+      set_env AUDD_API_TOKEN "$token"; echo "AudD token saved"
+    fi
+    ;;
   update-check)
     "$APP_DIR/scripts/update.sh" --check
     ;;
@@ -59,7 +68,7 @@ case "${1:-}" in
       echo "System: $(sed -n "s/^PRETTY_NAME=//p" /etc/os-release | tr -d "\""), kernel $(uname -r), $(tr -d '\0' 2>/dev/null </proc/device-tree/model)"
       echo
       echo "== Services"
-      for u in icecast2 vinyl-stream vinyl-web vinyl-wifi vinyl-firstboot; do
+      for u in icecast2 nginx vinyl-stream vinyl-web vinyl-wifi vinyl-firstboot; do
         printf '%-16s %s\n' "$u" "$(systemctl is-active "$u" 2>&1)"
       done
       echo "icecast2 unit: $(systemctl show -p FragmentPath,SourcePath --value icecast2 2>/dev/null | tr '\n' ' ')"
@@ -86,11 +95,13 @@ case "${1:-}" in
     pw=$(sed -n 's/^ICECAST_SOURCE_PASSWORD=//p' "$ENV_FILE" 2>/dev/null)
     out=$(report | sed -E 's#(icecast://[^:/@]+:)[^@]*@#\1****@#g; s#sk-ant-[A-Za-z0-9_-]+#sk-ant-****#g')
     [[ -n "$pw" ]] && out=${out//"$pw"/****}
+    tok=$(sed -n 's/^AUDD_API_TOKEN=//p' "$ENV_FILE" 2>/dev/null)
+    [[ -n "$tok" ]] && out=${out//"$tok"/****}
     [[ -d /boot/firmware ]] && printf '%s\n' "$out" >/boot/firmware/vinylpi-report.txt 2>/dev/null
     printf '%s\n' "$out"
     ;;
   *)
-    echo "Usage: vinyl-admin.sh restart-stream|set-bitrate|set-auto-update|set-anthropic-key|update-check|update-apply|wifi-connect|diagnostics" >&2
+    echo "Usage: vinyl-admin.sh restart-stream|set-bitrate|set-auto-update|set-anthropic-key|set-audd-token|update-check|update-apply|wifi-connect|diagnostics" >&2
     exit 2
     ;;
 esac
