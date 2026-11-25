@@ -20,8 +20,6 @@ if [[ "$SRC_DIR" != "$APP_DIR" ]]; then
   cp -a "$SRC_DIR" "$APP_DIR"
   exec "$APP_DIR/scripts/install.sh" "$@"
 fi
-git config --system --get-all safe.directory 2>/dev/null | grep -qx "$APP_DIR" || git config --system --add safe.directory "$APP_DIR" 2>/dev/null || true
-
 missing=()
 for p in "${PACKAGES[@]}"; do dpkg -s "$p" >/dev/null 2>&1 || missing+=("$p"); done
 if (( ${#missing[@]} )); then
@@ -30,6 +28,9 @@ if (( ${#missing[@]} )); then
   apt-get update -qq
   apt-get install -y -qq "${missing[@]}"
 fi
+
+# The web app reads the version with git as the vinyl user, so trust the folder whoever owns it.
+git config --system --get-all safe.directory 2>/dev/null | grep -qx "$APP_DIR" || git config --system --add safe.directory "$APP_DIR"
 
 step "Setting up the vinyl user and folders"
 id vinyl &>/dev/null || useradd --system --user-group --no-create-home --shell /usr/sbin/nologin --groups audio vinyl
@@ -45,7 +46,7 @@ step "Setting up Python extras"
   || echo "Couldn't install Python extras right now; cover scan will be off until the next update." >&2
 
 step "Installing services"
-for unit in vinyl-stream.service vinyl-web.service vinyl-wifi.service vinyl-update.service vinyl-update.timer vinyl-firstboot.service; do
+for unit in icecast2.service vinyl-stream.service vinyl-web.service vinyl-wifi.service vinyl-update.service vinyl-update.timer vinyl-firstboot.service; do
   install -m 644 "$APP_DIR/config/$unit" "/etc/systemd/system/$unit"
 done
 install -m 644 "$APP_DIR/config/tmpfiles.conf" /usr/lib/tmpfiles.d/vinyl-pi.conf
@@ -73,6 +74,7 @@ systemctl daemon-reload
 systemd-tmpfiles --create /usr/lib/tmpfiles.d/vinyl-pi.conf
 
 if [[ "$MODE" == update ]]; then
+  systemctl restart icecast2 || true
   systemctl restart vinyl-web vinyl-wifi vinyl-stream
   exit 0
 fi

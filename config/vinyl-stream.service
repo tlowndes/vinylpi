@@ -1,8 +1,7 @@
 [Unit]
 Description=Vinyl Pi: stream the USB turntable to Icecast
-After=network-online.target sound.target icecast2.service
-Wants=network-online.target
-Requires=icecast2.service
+After=network-online.target sound.target icecast2.service vinyl-firstboot.service
+Wants=network-online.target icecast2.service
 # Keep retrying forever if the turntable is unplugged or switched off
 StartLimitIntervalSec=0
 
@@ -10,6 +9,9 @@ StartLimitIntervalSec=0
 Type=simple
 User=vinyl
 Group=audio
+SupplementaryGroups=vinyl
+# Bring the streaming server back if it has stopped (+ runs as root, - ignores a failure)
+ExecStartPre=+-/bin/systemctl start icecast2.service
 ExecStart=/opt/vinyl-pi/scripts/stream.sh
 Restart=always
 RestartSec=5

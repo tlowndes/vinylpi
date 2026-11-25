@@ -206,6 +206,15 @@
       <button class="pill grow" id="restart-stream">Restart stream</button>
       <button class="pill grow" data-go="wifi">Change Wi-Fi</button>
     </div>
+    <button class="link" id="report-get">Get a report</button>
+    <section class="card stack" id="report-card" hidden>
+      <div class="row between">
+        <span>Report</span>
+        <button class="pill" id="report-copy">Copy</button>
+      </div>
+      <p class="hint-text">Passwords are hidden. A copy is also saved on the SD card as vinylpi-report.txt.</p>
+      <pre class="report" id="report-text"></pre>
+    </section>
   </main>
 
   <!-- Wi-Fi rescue -->

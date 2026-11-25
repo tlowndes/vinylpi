@@ -77,7 +77,7 @@ def listeners():
 
 
 def version():
-    v = _run(["git", "-C", APP_DIR, "describe", "--tags", "--always", "--dirty"])
+    v = _run(["git", "-C", APP_DIR, "-c", f"safe.directory={APP_DIR}", "describe", "--tags", "--always", "--dirty"])
     return v or "dev"
 
 
@@ -95,6 +95,7 @@ def status():
         "wifi": wifi(),
         "turntable": turntable(),
         "live": live,
+        "stream": _read_json(os.path.join(DATA_DIR, "stream.json"), {}),
         "listeners": n,
         "bitrate": e.get("BITRATE", "320k"),
         "auto_update": e.get("AUTO_UPDATE", "1") == "1",

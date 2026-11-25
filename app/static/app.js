@@ -392,6 +392,7 @@
     const rows = [
       ["Turntable", status.turntable || "Not found", status.turntable ? "" : "bad"],
       ["Stream", status.live ? `${status.bitrate} · ${status.listeners} listening` : "Offline", status.live ? "" : "bad"],
+      ...(!status.live && status.stream && status.stream.state === "failed" ? [["Why", status.stream.message, "bad"]] : []),
       ["Wi-Fi", w ? `${w.ssid} · ${w.signal > 60 ? "good" : w.signal > 35 ? "ok" : "weak"}` : "Wired or offline", w && w.signal <= 35 ? "warn" : ""],
       ["Watchdog", wd.last_fix ? `Last fix ${ago(wd.last_fix)}` : "All quiet", ""],
       ["Temperature", status.temperature != null ? `${status.temperature}°C` : "?", status.temperature > 70 ? "bad" : status.temperature > 60 ? "warn" : ""],
@@ -454,6 +455,25 @@
   $("#restart-stream").addEventListener("click", async () => {
     say(smsg, "Restarting the stream…");
     try { await api("/api/restart-stream", { method: "POST" }); say(smsg, "Stream restarted."); } catch (err) { say(smsg, err.message, true); }
+  });
+
+  $("#report-get").addEventListener("click", async (e) => {
+    e.target.disabled = true; say(smsg, "Putting a report together…");
+    try {
+      const r = await api("/api/diagnostics", { method: "POST" });
+      $("#report-text").textContent = r.report; $("#report-card").hidden = false; say(smsg, "");
+      $("#report-card").scrollIntoView({ behavior: "smooth" });
+    } catch (err) { say(smsg, err.message, true); }
+    e.target.disabled = false;
+  });
+  $("#report-copy").addEventListener("click", async () => {
+    const text = $("#report-text").textContent;
+    try { await navigator.clipboard.writeText(text); say(smsg, "Report copied. Paste it into the chat."); }
+    catch {
+      const range = document.createRange(); range.selectNodeContents($("#report-text"));
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
+      say(smsg, "Report selected. Use Copy from your phone's menu.");
+    }
   });
 
   /* ---------- Wi-Fi ---------- */
