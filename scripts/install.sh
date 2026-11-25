@@ -74,6 +74,7 @@ systemctl daemon-reload
 systemd-tmpfiles --create /usr/lib/tmpfiles.d/vinyl-pi.conf
 
 if [[ "$MODE" == update ]]; then
+  "$APP_DIR/scripts/configure.sh"
   systemctl restart icecast2 || true
   systemctl restart vinyl-web vinyl-wifi vinyl-stream
   exit 0

@@ -37,9 +37,8 @@ sed -i \
   -e "s|<admin-password>[^<]*</admin-password>|<admin-password>${ICECAST_ADMIN_PASSWORD}</admin-password>|" \
   -e "s|<hostname>[^<]*</hostname>|<hostname>$(hostname).local</hostname>|" \
   "$ICECAST_XML"
-# Let the web app (port 80) read the stream (port 8000) for its level meter.
-if ! grep -q 'vinylpi-cors' "$ICECAST_XML"; then
-  sed -i 's|</icecast>|    <!-- vinylpi-cors -->\n    <http-headers>\n        <header name="Access-Control-Allow-Origin" value="*" />\n    </http-headers>\n</icecast>|' "$ICECAST_XML"
-fi
+# Icecast already sends "Access-Control-Allow-Origin: *". Older versions added a second copy, which
+# browsers reject ("*, *"), so the web player played nothing. Take that copy out.
+sed -i '/<!-- vinylpi-cors -->/,/<\/http-headers>/d' "$ICECAST_XML"
 [[ -f /etc/default/icecast2 ]] && sed -i 's/^ENABLE=.*/ENABLE=true/' /etc/default/icecast2
 exit 0
