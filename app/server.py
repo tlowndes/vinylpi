@@ -162,22 +162,21 @@ def set_now():
             return {"error": "That record isn't on your shelf any more"}, 404
         if item.get("release") or item.get("release_group"):
             body = {"release": item.get("release"), "release_group": item.get("release_group")}
+        elif item.get("discogs_id") and system.env().get("DISCOGS_TOKEN"):
+            body = {"discogs": item["discogs_id"]}
         else:
             return jsonify(_set_now({k: item.get(k) for k in ("title", "artist", "year", "label", "cover", "discogs_id")}
                                     | {"tracks": [], "manual": True}))
     try:
-        if body.get("release_group") or body.get("release"):
-            d = mb.details(release_group=body.get("release_group"), release_id=body.get("release"))
-            if not d:
-                return {"error": "Couldn't find that record on MusicBrainz"}, 404
-            rec = _with_cover(d)
-        elif body.get("title"):
-            rec = {"title": body["title"][:200], "artist": body.get("artist", "")[:200], "year": str(body.get("year", ""))[:4],
-                   "label": "", "tracks": [], "cover": None, "manual": True}
-        else:
-            return {"error": "Nothing to set"}, 400
+        rec = _record_from(body)
+    except LookupError as exc:
+        return {"error": str(exc)}, 404
+    except (mb.Busy, discogs.DiscogsError) as exc:
+        return {"error": str(exc)}, 503
     except Exception as exc:
-        return {"error": f"MusicBrainz lookup failed: {exc}"}, 502
+        return {"error": f"Lookup failed: {exc}"}, 502
+    if not rec:
+        return {"error": "Nothing to set"}, 400
     return jsonify(_set_now(rec))
 
 
@@ -225,17 +224,53 @@ def search():
         return {"error": f"Search failed: {exc}"}, 502
 
 
+def _record_from(body):
+    """A full record from MusicBrainz ids, a Discogs id, or a typed-in title. None if the body names nothing."""
+    if body.get("release_group") or body.get("release"):
+        d = mb.details(release_group=body.get("release_group"), release_id=body.get("release"))
+        if not d:
+            raise LookupError("Couldn't find that record on MusicBrainz")
+        return _with_cover(d)
+    if body.get("discogs"):
+        d = discogs.release(system.env().get("DISCOGS_TOKEN", ""), body["discogs"])
+        os.makedirs(COVERS, exist_ok=True)
+        name = f"discogs-{d['discogs_id']}.jpg"
+        path = os.path.join(COVERS, name)
+        d["cover"] = f"/covers/{name}" if os.path.exists(path) or mb.download_cover([d.get("cover_url")], path) else None
+        return d
+    if body.get("title"):
+        return {"title": body["title"][:200], "artist": body.get("artist", "")[:200], "year": str(body.get("year", ""))[:4],
+                "label": "", "tracks": [], "cover": None, "manual": True}
+    return None
+
+
 @app.get("/api/barcode/<code>")
 def barcode(code):
+    code = "".join(ch for ch in code if ch.isdigit())
+    d, busy = None, None
     try:
         d = mb.by_barcode(code)
+    except mb.Busy as exc:
+        busy = str(exc)
     except Exception as exc:
-        return {"error": f"Lookup failed: {exc}"}, 502
+        busy = f"MusicBrainz lookup failed: {exc}"
+    # Not on MusicBrainz (or it's busy)? Try Discogs, which knows most vinyl barcodes.
+    token = system.env().get("DISCOGS_TOKEN", "")
+    if not d and token:
+        try:
+            rid = discogs.by_barcode(token, code)
+            if rid:
+                d = discogs.release(token, rid)
+        except discogs.DiscogsError as exc:
+            busy = busy or str(exc)
     if not d:
-        return {"error": "No record with that barcode on MusicBrainz"}, 404
-    return jsonify({"release": d["release"], "release_group": d["release_group"], "title": d["title"],
-                    "artist": d["artist"], "year": d["year"], "label": d["label"], "cover": d["cover_url"],
-                    "tracks": d["tracks"]})
+        if busy:
+            return {"error": busy}, 503
+        tip = "" if token else " Link Discogs in Settings to search there too."
+        return {"error": f"No record with that barcode on MusicBrainz.{tip}"}, 404
+    return jsonify({"release": d["release"], "release_group": d["release_group"], "discogs": d.get("discogs_id"),
+                    "title": d["title"], "artist": d["artist"], "year": d["year"], "label": d["label"],
+                    "cover": d["cover_url"], "tracks": d["tracks"]})
 
 
 @app.post("/api/cover")
@@ -303,15 +338,13 @@ def get_collection():
 def add_to_collection():
     body = request.get_json(force=True) or {}
     try:
-        if body.get("release_group") or body.get("release"):
-            d = mb.details(release_group=body.get("release_group"), release_id=body.get("release"))
-            if not d:
-                return {"error": "Couldn't find that record on MusicBrainz"}, 404
-            rec = _with_cover(d)
-        elif body.get("title"):
-            rec = {"title": body["title"][:200], "artist": body.get("artist", "")[:200]}
-        else:
+        rec = _record_from(body)
+        if not rec:
             return {"error": "Nothing to add"}, 400
+    except LookupError as exc:
+        return {"error": str(exc)}, 404
+    except (mb.Busy, discogs.DiscogsError) as exc:
+        return {"error": str(exc)}, 503
     except Exception as exc:
         return {"error": f"MusicBrainz lookup failed: {exc}"}, 502
     if shelf.find(rec):

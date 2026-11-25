@@ -1,6 +1,7 @@
 """Tiny MusicBrainz + Cover Art Archive client (stdlib only)."""
 import json
 import threading
+import urllib.error
 import time
 import urllib.parse
 import urllib.request
@@ -24,8 +25,23 @@ def _get(path, params):
             time.sleep(wait)
         _last = time.monotonic()
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=10) as r:
-        return json.load(r)
+    # MusicBrainz answers 503 when it's busy or we're going too fast. Back off and try again.
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return json.load(r)
+        except urllib.error.HTTPError as exc:
+            if exc.code not in (502, 503, 504) or attempt == 3:
+                if exc.code in (502, 503, 504):
+                    raise Busy("MusicBrainz is busy right now. Try again in a minute.") from exc
+                raise
+            time.sleep(1.5 * (attempt + 1))
+            with _lock:
+                _last = time.monotonic()
+
+
+class Busy(Exception):
+    pass
 
 
 def _artist(credit):

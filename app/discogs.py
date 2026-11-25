@@ -67,6 +67,41 @@ def find_release(token, rec):
     return None
 
 
+def _artists(artists):
+    out = ""
+    for a in artists or []:
+        out += (a.get("anv") or a.get("name", "")).split(" (")[0]  # Discogs adds "(2)" to clashing names
+        j = (a.get("join") or "").strip()
+        out += ", " if j == "," else f" {j} " if j else ""
+    return out.strip().rstrip(",")
+
+
+def by_barcode(token, code):
+    res = _call(token, "/database/search", {"barcode": code, "type": "release", "per_page": 5}).get("results") or []
+    vinyl = [r for r in res if "Vinyl" in (r.get("format") or [])]
+    return (vinyl or res)[0]["id"] if res else None
+
+
+def release(token, release_id):
+    """A Discogs release in the same shape as musicbrainz.details()."""
+    r = _call(token, f"/releases/{int(release_id)}")
+    tracks = [{"number": t.get("position") or "", "title": t.get("title", ""), "length": t.get("duration") or ""}
+              for t in r.get("tracklist") or [] if t.get("type_", "track") == "track"]
+    images = r.get("images") or []
+    labels = r.get("labels") or []
+    barcode = next((i.get("value", "") for i in r.get("identifiers") or [] if i.get("type") == "Barcode"), "")
+    return {
+        "release": None, "release_group": None, "discogs_id": r.get("id"),
+        "title": r.get("title", ""), "artist": _artists(r.get("artists")),
+        "year": str(r.get("year") or "") if r.get("year") else "",
+        "label": labels[0].get("name", "") if labels else "",
+        "tracks": tracks, "sort_artist": "",
+        "genres": (r.get("genres") or [])[:2] + (r.get("styles") or [])[:1],
+        "barcode": "".join(ch for ch in barcode if ch.isdigit()),
+        "cover_url": images[0].get("uri") if images else None,
+    }
+
+
 def add_to_collection(token, user, release_id):
     """Folder 1 is Discogs' "Uncategorized"."""
     return _call(token, f"/users/{urllib.parse.quote(user)}/collection/folders/1/releases/{int(release_id)}", method="POST")
