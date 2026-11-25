@@ -28,7 +28,7 @@ chmod 600 "$TLS/ca.key"
 chmod 644 "$TLS/ca.crt"
 
 # 2. The Pi's certificate: its .local names plus its current addresses.
-names="DNS:$(hostname).local,DNS:vinyl.local,DNS:localhost,IP:127.0.0.1,IP:10.42.0.1"
+names="DNS:$(hostname).local,DNS:vinyl.local,DNS:vinylpi.home.arpa,DNS:localhost,IP:127.0.0.1,IP:10.42.0.1"
 for ip in $(hostname -I 2>/dev/null); do
   [[ "$ip" =~ ^[0-9.]+$ ]] && [[ ",$names," != *",IP:$ip,"* ]] && names="$names,IP:$ip"
 done
@@ -77,6 +77,30 @@ server {
         proxy_pass http://127.0.0.1:80;
         proxy_set_header Host \$host;
         proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 120s;
+    }
+}
+EOF
+# vinylpi.home.arpa:8880: the same page over plain http on its own port, for people who like a fixed
+# address with a port (bookmarks, dashboards, reverse proxies). The web app itself stays on port 80.
+cat >>"$SITE" <<EOF
+server {
+    listen 8880;
+    server_name _;
+    client_max_body_size 8m;
+    location = /$MOUNT {
+        proxy_pass http://127.0.0.1:8000/$MOUNT;
+        proxy_buffering off;
+        proxy_read_timeout 1d;
+    }
+    location = /api/events {
+        proxy_pass http://127.0.0.1:80;
+        proxy_buffering off;
+        proxy_read_timeout 1h;
+    }
+    location / {
+        proxy_pass http://127.0.0.1:80;
+        proxy_set_header Host \$host;
         proxy_read_timeout 120s;
     }
 }

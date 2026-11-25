@@ -227,6 +227,16 @@ def get_stats():
     return jsonify(stats.summary(plays.entries(), state.get("now"), days))
 
 
+@app.post("/api/stats/remove")
+def stats_remove():
+    """Take plays out of the stats: given ids, or everything that only played a little (tidy=true)."""
+    body = request.get_json(silent=True) or {}
+    ids = list(body.get("ids") or [])
+    if body.get("tidy"):
+        ids += [e["id"] for e in plays.entries() if stats.is_partial(e)]
+    return jsonify({"removed": plays.remove(ids) if ids else 0})
+
+
 # ---------- lookup ----------
 
 @app.get("/api/search")
@@ -486,15 +496,21 @@ def _save_artwork(url):
 @app.post("/api/identify")
 def identify():
     e = system.env()
+    # ?switch=1 (from the scan page's Listen tab): put the album it hears on the platter, even if another one is.
+    switch = request.args.get("switch") == "1"
     try:
-        clip = recognise.capture(f"http://127.0.0.1:8000/{e.get('MOUNT', 'vinyl')}")
-        song = recognise.identify(clip, e.get("AUDD_API_TOKEN", ""))
+        url = f"http://127.0.0.1:8000/{e.get('MOUNT', 'vinyl')}"
+        song = None
+        for _ in range(2):  # a quiet intro or a gap between songs often fails, so take a second listen
+            song = recognise.identify(recognise.capture(url), e.get("AUDD_API_TOKEN", ""))
+            if song:
+                break
     except recognise.RecogniseError as exc:
         return {"error": str(exc)}, 502
     if not song:
         return {"found": False, "message": "Couldn't name that one. Try again in the middle of a song."}
 
-    if not state.get("now"):
+    if switch or not state.get("now"):
         rec = _album_for(song)
         _set_now(rec or {"title": song["album"] or song["title"], "artist": song["artist"], "year": song["year"],
                          "label": "", "tracks": [], "cover": None, "manual": True})
@@ -504,6 +520,7 @@ def identify():
         now = state.get("now")
         if now:
             t = _match_track(now, song["title"])
+            song["on_record"] = bool(t) or not now.get("tracks")
             if t:
                 song["number"] = t["number"]
                 s = _side_of(t["number"])

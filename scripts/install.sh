@@ -60,6 +60,9 @@ install -m 644 "$APP_DIR/config/nginx-vinyl.conf" /etc/systemd/system/nginx.serv
 rm -f /etc/nginx/sites-enabled/default
 install -d /etc/NetworkManager/dnsmasq-shared.d
 install -m 644 "$APP_DIR/config/dnsmasq-captive.conf" /etc/NetworkManager/dnsmasq-shared.d/vinyl-pi.conf
+# Tell the router this Pi is also called "vinylpi", so vinylpi.home.arpa (or whatever domain the router uses) finds it.
+install -d /etc/NetworkManager/conf.d
+install -m 644 "$APP_DIR/config/nm-dhcp-hostname.conf" /etc/NetworkManager/conf.d/vinyl-pi-hostname.conf
 install -m 440 "$APP_DIR/config/sudoers" /etc/sudoers.d/vinyl-pi
 visudo -cf /etc/sudoers.d/vinyl-pi >/dev/null || { rm -f /etc/sudoers.d/vinyl-pi; echo "sudoers file invalid" >&2; exit 1; }
 
@@ -103,6 +106,7 @@ source /etc/vinyl-pi/vinyl.env
 host="$(hostname).local"
 step "Done"
 echo "Open this on your phone or PC:   http://${host}"
+echo "Fixed address with a port:         http://vinylpi.home.arpa:8880  (needs your router to know the name; see README)"
 echo "Secure page (live camera scan):   https://${host}  (trust the certificate first: Settings -> Secure page)"
 echo "Raw stream (for VLC and friends): http://${host}:8000/${MOUNT}"
 systemctl is-active --quiet vinyl-stream || echo "The stream isn't running yet. Is the turntable plugged in and on? Check: journalctl -u vinyl-stream -n 30"
