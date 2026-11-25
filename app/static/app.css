@@ -129,24 +129,54 @@ select { height: 44px; padding: 0 14px; }
 .history .art { width: 62px; height: 62px; border-radius: 8px; background: var(--surf) center / cover; }
 .history .txt { display: none; }
 
-/* Desktop: tinted stage + side panel, like the mockup */
+.tracks li.other { display: none; }
+.tracks .side-head { display: block; padding-top: 6px; }
+
+/* Desktop "Gatefold": the page opens like a sleeve. Cover and record on the left;
+   title, controls and both sides' tracklists on the right; search in the top bar; Earlier along the bottom.
+   The wrappers drop out of the layout (display: contents) so every piece sits on one page grid. */
 @media (min-width: 960px) {
-  .view-now { display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: auto 1fr; gap: 20px; padding: 20px; }
-  .stage { grid-column: 1; grid-row: 1 / span 2; border-radius: 24px; background: var(--tint); transition: background 0.6s; padding: 32px 40px; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); column-gap: 40px; align-items: center; }
-  .top { background: transparent; padding: 0; border-radius: 0; }
-  .deck { margin: 24px 0 0; }
-  .meta { padding: 0; }
-  .tracks { display: flex; }
-  .side { display: flex; flex-direction: column; gap: 16px; grid-column: 2; grid-row: 1 / span 2; background: var(--panel); border-radius: 24px; padding: 24px; }
-  .side .search { display: flex; flex-direction: column; gap: 8px; }
-  .side .search input { height: 44px; border-radius: 12px; }
-  .history { flex-direction: column; overflow: visible; }
-  .history li { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 12px; align-items: center; }
-  .history .art { width: 48px; height: 48px; }
-  .history .txt { display: block; min-width: 0; }
+  .app { max-width: none; }
+  .stage, .top, .meta, .side { display: contents; }
+  .view-now { position: relative; isolation: isolate; display: grid; min-height: 100dvh; gap: 0 clamp(40px, 4vw, 72px); align-content: start;
+    padding: 28px max(40px, calc((100vw - 1600px) / 2)) 36px;
+    background: radial-gradient(120% 90% at 20% 30%, var(--tint), var(--base) 75%); transition: background 0.6s;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto auto auto auto auto 1fr auto auto;
+    grid-template-areas: "bar bar" "deck kick" "deck title" "deck sub" "deck heard" "deck controls" "deck volume" "deck meter" "deck tracks" "elabel elabel" "hist hist"; }
+  .bar { grid-area: bar; margin-bottom: 28px; }
+  .bar .icon-btn:last-child:not(:first-child) { margin-left: 0; }
+  .side .search { grid-area: bar; justify-self: center; align-self: center; width: min(420px, 30vw); z-index: 1; }
+  .side .search .kicker { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .side .search input { width: 100%; height: 44px; background: rgba(28, 28, 31, 0.7); }
+  .deck { grid-area: deck; align-self: start; justify-self: end; margin: 0; max-width: none; width: min(100%, calc((100dvh - 340px) * 35 / 30)); min-width: 300px; }
+  #side-line { grid-area: kick; margin-top: 8px; }
+  .meta h1 { grid-area: title; margin-top: 10px; font-size: clamp(44px, 4.6vw, 88px); }
+  .meta .sub { grid-area: sub; }
+  .heard { grid-area: heard; margin-top: 18px; }
+  .controls { grid-area: controls; margin-top: 24px; max-width: 520px; }
+  .volume { grid-area: volume; margin-top: 14px; max-width: 520px; }
+  .meter { grid-area: meter; margin-top: 10px; max-width: 520px; }
+  .tracks { grid-area: tracks; display: block; margin-top: 22px; max-width: 640px; }
+  .tracks li { display: grid; margin-bottom: 6px; break-inside: avoid; }
+  .tracks li.other { display: grid; opacity: 0.55; }
+  .tracks .side-head, .tracks .side-head.other { display: block; }
+  .tracks .side-head.other { margin-top: 12px; }
+  .side > .row.between { grid-area: elabel; justify-content: flex-start; margin-top: 36px; padding-top: 20px; border-top: 1px solid var(--line2); }
+  .side > .row.between > .row { margin-left: auto; }
+  .history { grid-area: hist; margin-top: 14px; gap: 28px; overflow: hidden; }
+  .history li { display: grid; grid-template-columns: 56px auto; gap: 12px; align-items: center; }
+  .history .art { width: 56px; height: 56px; }
+  .history .txt { display: block; max-width: 220px; min-width: 0; }
   .history .t1 { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .history .t2 { font-size: 13px; color: var(--mute); }
+  .history .t2 { font-size: 13px; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .view:not(.view-now) { max-width: 560px; margin: 0 auto; }
+}
+/* Wide enough for Side A and Side B next to each other */
+@media (min-width: 1280px) {
+  .tracks { columns: 2; column-gap: 32px; }
+  .tracks .side-head.other { margin-top: 0; }
+  .tracks .side-head.brk { break-before: column; }
 }
 
 /* ---------- Add record ---------- */

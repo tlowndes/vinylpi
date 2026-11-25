@@ -118,7 +118,10 @@ def details(release_group=None, release_id=None):
     r = _get(f"release/{release_id}", {"inc": "recordings labels release-groups artist-credits genres url-rels"})
     rg = r.get("release-group", {})
     tracks = []
-    for m in r.get("media", []):
+    media = r.get("media", [])
+    # A vinyl release bundled with a CD or download lists every track twice; keep the vinyl.
+    vinyl = [m for m in media if "Vinyl" in (m.get("format") or "")]
+    for m in vinyl or media:
         for t in m.get("tracks", []):
             ms = t.get("length") or 0
             tracks.append({

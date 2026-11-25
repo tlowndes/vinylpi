@@ -114,15 +114,27 @@
       sleeve.style.backgroundImage = n.cover ? `url("${n.cover}")` : "";
       sleeve.classList.toggle("empty", !n.cover);
       setColours(n.cover);
-      const side = (n.tracks || []).filter((t) => !/^[A-Z]/i.test(t.number) || t.number[0].toUpperCase() === n.side);
+      // Some releases list the vinyl sides (A1, B2...) plus a CD or bonus disc (1, 2...). Keep the sides only.
+      const all = n.tracks || [];
+      const lettered = all.filter((t) => /^[A-Z]/i.test(t.number));
+      const vinyl = lettered.length ? lettered : all;
+      const sideOf = (t) => (/^[A-Z]/i.test(t.number) ? t.number[0].toUpperCase() : "");
       const h = n.heard;
       const heard = $("#heard");
       if (h) {
         heard.classList.remove("err");
         heard.innerHTML = `<span class="kicker accent">♪ ${esc(ago(h.at).toUpperCase())}</span> <b>${esc(h.title)}</b> <span class="by">${esc(h.artist)}</span>`;
       } else if (!heard.classList.contains("err")) heard.innerHTML = "";
-      $("#tracks").innerHTML = side.slice(0, 8).map((t) =>
-        `<li${h && h.number === t.number ? ' class="on"' : ""}><span class="n">${esc(t.number)}</span><span>${esc(t.title)}</span><span class="t">${esc(t.length)}</span></li>`).join("");
+      // Every side is rendered; sides not on the platter are marked "other" (hidden on narrow screens).
+      let last = null;
+      const sides = new Set(vinyl.map(sideOf).filter(Boolean));
+      $("#tracks").innerHTML = vinyl.map((t) => {
+        const sd = sideOf(t), cur = !sd || sd === (n.side || "A");
+        const head = sd && sd !== last ? `<li class="side-head${cur ? "" : " other"}${sides.size === 2 && last ? " brk" : ""}"><span class="kicker${cur ? " accent" : " dim"}">SIDE ${esc(sd)}${cur ? " · ON NOW" : ""}</span></li>` : "";
+        last = sd;
+        const cls = [cur ? "" : "other", h && h.number === t.number ? "on" : ""].filter(Boolean).join(" ");
+        return `${head}<li${cls ? ` class="${cls}"` : ""}><span class="n">${esc(t.number)}</span><span>${esc(t.title)}</span><span class="t">${esc(t.length)}</span></li>`;
+      }).join("");
       document.title = `${n.title} · Vinyl Pi`;
     }
     setMediaInfo(n);
