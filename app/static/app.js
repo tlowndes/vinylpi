@@ -1087,7 +1087,25 @@
     $("#top-artists").innerHTML = s.top_artists.length ? s.top_artists.map((a) => `<li>
         <div style="min-width:0"><div class="t1">${esc(a.artist)}</div><div class="bar-fill" style="width:${(a.spins / topA) * 100}%"></div></div>
         <span class="n">${a.spins} · ${hmText(a.minutes)}</span></li>`).join("") : none("No artists yet.");
+    const when = (t) => new Date(t * 1000).toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" });
+    $("#tidy").hidden = !s.partials;
+    $("#tidy").textContent = `Tidy ${s.partials} partial ${s.partials === 1 ? "play" : "plays"}`;
+    $("#recent").innerHTML = (s.recent || []).length ? s.recent.map((r) => `<li${r.partial ? ' class="partial"' : ""}>
+        <div class="art" style="${r.cover ? `background-image:url('${esc(r.cover)}')` : ""}"></div>
+        <div style="min-width:0"><div class="t1">${esc(r.title)}</div><div class="t2">${esc(r.artist)} · ${esc(when(r.start))} · ${r.minutes < 1 ? "under a minute" : hmText(Math.round(r.minutes))}${r.partial ? ' · <b>partial</b>' : ""}</div></div>
+        <button class="icon-btn" data-rm="${esc(r.id)}" aria-label="Remove this play"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></li>`).join("") : none("No plays yet.");
   }
+
+  // Recent plays: remove misplays and half-played records so they stop counting.
+  $("#tidy").addEventListener("click", async () => {
+    try { await api("/api/stats/remove", { method: "POST", body: { tidy: true } }); loadStats(); } catch (e) { say($("#stats-msg"), e.message, true); }
+  });
+  $("#recent").addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-rm]");
+    if (!b) return;
+    b.disabled = true;
+    try { await api("/api/stats/remove", { method: "POST", body: { ids: [b.dataset.rm] } }); loadStats(); } catch (err) { say($("#stats-msg"), err.message, true); b.disabled = false; }
+  });
 
   /* ---------- live updates ---------- */
   function connect() {

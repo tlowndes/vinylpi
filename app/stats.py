@@ -1,4 +1,5 @@
 """Listening stats from an append-only play log (one JSON line per record spun)."""
+import hashlib
 import json
 import os
 import time
@@ -33,6 +34,7 @@ class PlayLog:
 
     def add(self, rec, end):
         entry = {
+            "length": record_length(rec),
             "release_group": rec.get("release_group"), "release": rec.get("release"),
             "title": rec.get("title", ""), "artist": rec.get("artist", ""), "cover": rec.get("cover"),
             "year": rec.get("year", ""), "start": rec.get("set_at") or rec.get("started_at") or end,
@@ -52,9 +54,30 @@ class PlayLog:
     def entries(self):
         try:
             with open(self.path) as f:
-                return [json.loads(line) for line in f if line.strip()]
+                rows = [json.loads(line) for line in f if line.strip()]
         except FileNotFoundError:
             return []
+        for e in rows:  # older lines have no id: make a steady one from what they hold
+            e.setdefault("id", hashlib.sha1(f"{e.get('start')}|{e.get('title')}|{e.get('artist')}".encode()).hexdigest()[:12])
+        return rows
+
+    def remove(self, ids):
+        """Drop plays by id (misplays, half-played records). Rewrites the log in one go."""
+        ids = set(ids)
+        rows = self.entries()
+        keep = [e for e in rows if e["id"] not in ids]
+        tmp = self.path + ".tmp"
+        with open(tmp, "w") as f:
+            for e in keep:
+                f.write(json.dumps(e) + "\n")
+        os.replace(tmp, self.path)
+        return len(rows) - len(keep)
+
+
+def is_partial(e):
+    """A play that was over quickly: under 2 minutes, or under a fifth of the record when we know its length."""
+    secs, length = e.get("seconds", 0), e.get("length") or 0
+    return secs < 120 or (length and secs < length * 0.2)
 
 
 def summary(entries, now_playing=None, days=7, today=None):
@@ -99,6 +122,9 @@ def summary(entries, now_playing=None, days=7, today=None):
             buckets[d - timedelta(days=d.weekday())] += e.get("seconds", 0)
         chart = [{"label": d.strftime("%-d %b"), "date": d.isoformat(), "minutes": round(buckets[d] / 60)} for d in labels]
 
+    recent = [{"id": e.get("id"), "title": e.get("title"), "artist": e.get("artist"), "cover": e.get("cover"),
+               "start": e.get("start"), "minutes": round(e.get("seconds", 0) / 60, 1), "partial": bool(is_partial(e))}
+              for e in sorted((e for e in rows if e.get("id")), key=lambda e: -e.get("start", 0))[:30]]
     top_records = [{"title": info[k].get("title"), "artist": info[k].get("artist"), "cover": info[k].get("cover"),
                     "year": info[k].get("year"), "spins": n} for k, n in spins.most_common(5)]
     top_artists = [{"artist": a, "spins": n, "minutes": round(artist_secs[a] / 60)} for a, n in artist_spins.most_common(5)]
@@ -111,5 +137,7 @@ def summary(entries, now_playing=None, days=7, today=None):
         "chart": chart,
         "top_records": top_records,
         "top_artists": top_artists,
+        "recent": recent,
+        "partials": sum(1 for e in rows if e.get("id") and is_partial(e)),
         "first": min((e["start"] for e in entries), default=None),
     }

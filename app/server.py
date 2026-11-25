@@ -227,6 +227,16 @@ def get_stats():
     return jsonify(stats.summary(plays.entries(), state.get("now"), days))
 
 
+@app.post("/api/stats/remove")
+def stats_remove():
+    """Take plays out of the stats: given ids, or everything that only played a little (tidy=true)."""
+    body = request.get_json(silent=True) or {}
+    ids = list(body.get("ids") or [])
+    if body.get("tidy"):
+        ids += [e["id"] for e in plays.entries() if stats.is_partial(e)]
+    return jsonify({"removed": plays.remove(ids) if ids else 0})
+
+
 # ---------- lookup ----------
 
 @app.get("/api/search")

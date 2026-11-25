@@ -375,3 +375,17 @@ select { height: 44px; padding: 0 14px; }
 
 .report { margin: 0; max-height: 50vh; overflow: auto; font: 11px/1.5 var(--mono); color: var(--mute); white-space: pre-wrap; word-break: break-word; user-select: text; }
 #secure-card a.pill:not(.solid) { color: var(--text); }
+
+/* Recent plays (stats) */
+.plays { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.plays li { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 12px; align-items: center; min-height: 56px; }
+.plays .art { width: 44px; height: 44px; border-radius: 8px; background: var(--surf) center / cover; }
+.plays .t1 { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plays .t2 { font-size: 13px; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plays .t2 b { color: var(--warn); font-weight: 600; }
+.plays li.partial .art { opacity: 0.55; }
+.plays .icon-btn { width: 36px; height: 36px; background: transparent; color: var(--dim); }
+.plays .icon-btn:hover { background: var(--surf); color: var(--text); }
+.plays .icon-btn svg { width: 18px; height: 18px; }
+.plays .none { color: var(--mute); font-size: 14px; display: block; min-height: 0; }
+.card .row.between .link { text-transform: none; letter-spacing: 0; font: 600 13px var(--sans); }
