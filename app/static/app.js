@@ -270,15 +270,26 @@
     video.hidden = false;
     $("#shot").hidden = true;
     await video.play().catch(() => {});
+    // Some browsers grant the camera but never show a picture. Give up after 4 s and fall back to photos.
+    setTimeout(() => {
+      if (liveStream && !video.videoWidth) {
+        stopLive();
+        say($("#scan-msg"), "This browser won't show a live camera. Tap Take photo instead, or try Chrome.", true);
+      }
+    }, 4000);
+    $("#scan-hint").textContent = "Point at the barcode on the back of the sleeve. It reads it by itself.";
+    const native = "BarcodeDetector" in window;
     const c = document.createElement("canvas");
-    let busy = false;
+    let busy = false, tick = 0;
     liveTimer = setInterval(async () => {
       if (busy || scanMode !== "barcode" || !video.videoWidth) return;
+      if (!native && tick++ % 2) return; // the fallback reader is slower, so try every other tick
       busy = true;
       try {
-        c.width = video.videoWidth; c.height = video.videoHeight;
-        c.getContext("2d").drawImage(video, 0, 0);
-        const code = await decode(c, true);
+        const scale = Math.min(1, 1280 / video.videoWidth);
+        c.width = video.videoWidth * scale; c.height = video.videoHeight * scale;
+        c.getContext("2d").drawImage(video, 0, 0, c.width, c.height);
+        const code = await decode(c, native);
         if (code) { $("#code").value = code; stopLive(true); await lookup(code); }
       } catch { /* no barcode in this frame */ }
       busy = false;
@@ -461,7 +472,7 @@
     e.target.value = "";
   });
   $("#code-form").addEventListener("submit", (e) => { e.preventDefault(); const v = $("#code").value.trim(); if (v) lookup(v); });
-  $("#spin-match").addEventListener("click", () => match && spin({ release: match.release }, $("#scan-msg")));
+  $("#spin-match").addEventListener("click", () => match && spin(match.release ? { release: match.release } : { discogs: match.discogs }, $("#scan-msg")));
 
   /* ---------- shelf ---------- */
   let shelfItems = [], shelfSetup = [{ name: "Shelf 1", capacity: 80 }], pulled = null;
