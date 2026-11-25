@@ -204,3 +204,5 @@ select { height: 44px; padding: 0 14px; }
 #cover-card .link { align-self: flex-start; }
 .viewfinder.cover .frame { left: 10%; right: 10%; top: 16%; height: auto; aspect-ratio: 1; }
 .viewfinder.cover .hint { top: auto; bottom: 46%; }
+
+.report { margin: 0; max-height: 50vh; overflow: auto; font: 11px/1.5 var(--mono); color: var(--mute); white-space: pre-wrap; word-break: break-word; user-select: text; }

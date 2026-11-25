@@ -51,8 +51,46 @@ case "${1:-}" in
     systemd-run --quiet --no-block --unit "vinyl-wifi-join-$(date +%s)" "$APP_DIR/scripts/wifi.sh" join
     echo "Joining $ssid"
     ;;
+  diagnostics)
+    # A plain-text health report for troubleshooting, also saved to the SD card's boot partition.
+    report() {
+      echo "Vinyl Pi report, $(date '+%Y-%m-%d %H:%M %Z')"
+      echo "Version: $(git -C "$APP_DIR" -c safe.directory="$APP_DIR" describe --tags --always 2>/dev/null)"
+      echo "System: $(sed -n "s/^PRETTY_NAME=//p" /etc/os-release | tr -d "\""), kernel $(uname -r), $(tr -d '\0' 2>/dev/null </proc/device-tree/model)"
+      echo
+      echo "== Services"
+      for u in icecast2 vinyl-stream vinyl-web vinyl-wifi vinyl-firstboot; do
+        printf '%-16s %s\n' "$u" "$(systemctl is-active "$u" 2>&1)"
+      done
+      echo "icecast2 unit: $(systemctl show -p FragmentPath,SourcePath --value icecast2 2>/dev/null | tr '\n' ' ')"
+      echo
+      echo "== Turntable (arecord -l)"
+      arecord -l 2>&1
+      echo
+      echo "== Stream state"
+      cat /var/lib/vinyl-pi/stream.json 2>&1; echo
+      echo
+      echo "== Icecast status"
+      curl -sS -m 3 http://127.0.0.1:8000/status-json.xsl 2>&1; echo
+      echo
+      echo "== Stream log (journal)"
+      journalctl -u vinyl-stream -n 40 --no-pager 2>&1
+      echo
+      echo "== Icecast log (journal)"
+      journalctl -u icecast2 -n 20 --no-pager 2>&1
+      echo
+      echo "== Icecast error.log"
+      tail -n 20 /var/log/icecast2/error.log 2>&1
+    }
+    # Never show passwords or keys, even if an old version logged them.
+    pw=$(sed -n 's/^ICECAST_SOURCE_PASSWORD=//p' "$ENV_FILE" 2>/dev/null)
+    out=$(report | sed -E 's#(icecast://[^:/@]+:)[^@]*@#\1****@#g; s#sk-ant-[A-Za-z0-9_-]+#sk-ant-****#g')
+    [[ -n "$pw" ]] && out=${out//"$pw"/****}
+    [[ -d /boot/firmware ]] && printf '%s\n' "$out" >/boot/firmware/vinylpi-report.txt 2>/dev/null
+    printf '%s\n' "$out"
+    ;;
   *)
-    echo "Usage: vinyl-admin.sh restart-stream|set-bitrate|set-auto-update|set-anthropic-key|update-check|update-apply|wifi-connect" >&2
+    echo "Usage: vinyl-admin.sh restart-stream|set-bitrate|set-auto-update|set-anthropic-key|update-check|update-apply|wifi-connect|diagnostics" >&2
     exit 2
     ;;
 esac

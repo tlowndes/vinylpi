@@ -270,6 +270,12 @@ def restart_stream():
     return jsonify({"ok": ok, "message": out}), (200 if ok else 500)
 
 
+@app.post("/api/diagnostics")
+def diagnostics():
+    ok, out = system.admin("diagnostics", timeout=30)
+    return jsonify({"ok": ok, "report": out}), (200 if ok else 500)
+
+
 @app.get("/api/wifi/networks")
 def wifi_networks():
     return jsonify(system.networks())
