@@ -133,7 +133,12 @@ select { height: 44px; padding: 0 14px; }
 .heard-txt:empty { display: none; }
 .heard-txt .by { color: var(--mute); }
 .heard-txt.err { color: var(--bad); font-size: 14px; }
+.tracks li[data-n] { position: relative; cursor: pointer; border-radius: 6px; }
+.tracks li[data-n]:hover { color: var(--text); }
+.tracks li[data-n]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tracks li.on { color: var(--text); }
+.tracks li.on .prog { position: absolute; left: 0; bottom: -3px; height: 2px; border-radius: 1px; background: var(--accent); transition: width 1s linear; }
+.tracks li.on .prog[hidden] { display: none; }
 .tracks li.on .n { color: var(--accent); }
 .tracks li.on .n::before { content: "♪ "; }
 .volume { display: flex; align-items: center; gap: 12px; }
@@ -389,3 +394,4 @@ select { height: 44px; padding: 0 14px; }
 .plays .icon-btn svg { width: 18px; height: 18px; }
 .plays .none { color: var(--mute); font-size: 14px; display: block; min-height: 0; }
 .card .row.between .link { text-transform: none; letter-spacing: 0; font: 600 13px var(--sans); }
+.tracks li.on > span:nth-child(2) { font-weight: 600; }

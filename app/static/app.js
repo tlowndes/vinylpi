@@ -145,13 +145,18 @@
       // Every side is rendered; sides not on the platter are marked "other" (hidden on narrow screens).
       let last = null;
       const sides = new Set(vinyl.map(sideOf).filter(Boolean));
+      // The track on is the one the Pi is following (by timing and the gaps between tracks), else the last song it heard.
+      const on = (n.playing && n.playing.number) || (h && h.number) || "";
       $("#tracks").innerHTML = vinyl.map((t) => {
         const sd = sideOf(t), cur = !sd || sd === (n.side || "A");
         const head = sd && sd !== last ? `<li class="side-head${cur ? "" : " other"}${sides.size === 2 && last ? " brk" : ""}"><span class="kicker${cur ? " accent" : " dim"}">SIDE ${esc(sd)}${cur ? " · ON NOW" : ""}</span></li>` : "";
         last = sd;
-        const cls = [cur ? "" : "other", h && h.number === t.number ? "on" : ""].filter(Boolean).join(" ");
-        return `${head}<li${cls ? ` class="${cls}"` : ""}><span class="n">${esc(t.number)}</span><span>${esc(t.title)}</span><span class="t">${esc(t.length)}</span></li>`;
+        const isOn = on === t.number;
+        const cls = [cur ? "" : "other", isOn ? "on" : ""].filter(Boolean).join(" ");
+        return `${head}<li${cls ? ` class="${cls}"` : ""} data-n="${esc(t.number)}" data-len="${secs(t.length)}" tabindex="0" role="button" aria-label="Mark ${esc(t.title)} as playing"><span class="n">${esc(t.number)}</span><span>${esc(t.title)}</span><span class="t">${esc(t.length)}</span>${isOn ? '<i class="prog"></i>' : ""}</li>`;
       }).join("");
+      playingSince = n.playing ? n.playing.since : null;
+      progress();
       document.title = `${n.title} · Vinyl Pi`;
     }
     setMediaInfo(n);
@@ -160,6 +165,26 @@
         <div class="txt"><div class="t1">${esc(h.title)}</div><div class="t2">${esc(h.artist)} · ${esc(ago(h.started_at))}</div></div></li>`).join("");
   }
   setInterval(render, 60000);
+
+  // The bar under the playing track: how far through it we think we are (a guess, so it never quite fills).
+  let playingSince = null;
+  const secs = (len) => { const p = String(len || "").split(":").map(Number); return p.length >= 2 && !p.some(isNaN) ? p[p.length - 2] * 60 + p[p.length - 1] : 0; };
+  function progress() {
+    const li = $("#tracks li.on"), bar = li && li.querySelector(".prog");
+    if (!bar) return;
+    const len = +li.dataset.len;
+    const f = playingSince && len ? Math.min(0.98, Math.max(0, (Date.now() / 1000 - playingSince) / len)) : 0;
+    bar.style.width = `${f * 100}%`;
+    bar.hidden = !len || !playingSince;
+  }
+  setInterval(progress, 1000);
+  // Tap a track to say "this one's playing": the Pi carries on counting from there.
+  async function markTrack(li) {
+    if (!li || !li.dataset.n || li.classList.contains("on")) return;
+    try { await api("/api/track", { method: "POST", body: { number: li.dataset.n } }); } catch (e) { say($("#heard"), e.message, true); }
+  }
+  $("#tracks").addEventListener("click", (e) => markTrack(e.target.closest("li[data-n]")));
+  $("#tracks").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); markTrack(e.target.closest("li[data-n]")); } });
 
   $("#flip").addEventListener("click", () => api("/api/flip", { method: "POST" }).catch(() => {}));
 
